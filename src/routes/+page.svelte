@@ -3,6 +3,7 @@
 	import DeckList from '../lib/DeckList.svelte';
 	import TestPostButton from '$lib/TestPostButton.svelte';
 	import CreateDeckFromCsvButton from '$lib/CreateDeckFromCSVButton.svelte';
+	import EditableCard from '$lib/EditableCard.svelte';
 </script>
 
 <h1>Welcome to MI/O2</h1>
@@ -18,8 +19,11 @@
 <Greet />
 
 <TestPostButton />
-
 <br />
 <hr />
 <br />
 <CreateDeckFromCsvButton />
+<br />
+<hr />
+<br />
+<EditableCard />

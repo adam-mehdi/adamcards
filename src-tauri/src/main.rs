@@ -148,3 +148,8 @@ fn post_review(state: tauri::State<ReviewSessionState>, deck_id: usize, review_s
   println!("Review Score: {}", review_score);
   Ok("Success".to_string())
 }
+
+/*
+TODO
+- Add the current card to the review state struct.
+*/
