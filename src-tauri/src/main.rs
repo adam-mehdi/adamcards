@@ -22,7 +22,7 @@ fn main() {
   cards.push(
     FrontendCard{
       id: 1,
-      front: "Front 1".into(),
+      front: "Let $x \\in X$ be given...".into(),
       back: "Back 1".into(),
     }
   );

@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { save } from '@tauri-apps/api/dialog';
+	import katex from 'katex';
+	import KaTeXRenderer from './KaTeXRenderer.svelte';
 
 	let front = '';
 	let back = '';
@@ -44,6 +46,8 @@
 	<p>{saved ? 'Saved' : saving ? 'Saving...' : ''}</p>
 </div>
 <h3>Hypothetical Backend State</h3>
-<p>Front: {backendFront}</p>
-<p>Back: {backendBack}</p>
+{backendFront}
+{backendBack}
+<p>Front: <KaTeXRenderer input={backendFront} /></p>
+<p>Back: <KaTeXRenderer input={'TEST TEST'} /></p>
 <hr />

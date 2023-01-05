@@ -1,19 +1,28 @@
 <script lang="ts">
-	import Greet from '../lib/Greet.svelte';
-	import DeckList from '../lib/DeckList.svelte';
+	import Greet from '$lib/Greet.svelte';
+	import DeckList from '$lib/DeckList.svelte';
 	import TestPostButton from '$lib/TestPostButton.svelte';
 	import CreateDeckFromCsvButton from '$lib/CreateDeckFromCSVButton.svelte';
 	import EditableCard from '$lib/EditableCard.svelte';
 	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
 </script>
 
-<h1>Welcome to MI/O2</h1>
-<em>Memory Input Output 2</em>
-<h2>My Decks</h2>
+<a href="/">Back to Home</a>
+<hr />
 <br />
-<DeckList />
-<h2>Create Deck</h2>
+
+<Greet />
+
+<TestPostButton />
+<br />
+<hr />
+<br />
 <CreateDeckFromCsvButton />
 <br />
 <hr />
-<a href="/demo">Svelte Examples</a>
+<br />
+
+<br />
+<KaTeXRenderer input={String.raw`Hello:`} />
+<br />
+<EditableCard />

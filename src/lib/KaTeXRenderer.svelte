@@ -1,8 +1,9 @@
 <script lang="ts">
-	export let input: string = String.raw`Let $x \in X$ be given such that $f(s) \in Y$`;
+	//export let input: string = String.raw`Let $x \in X$ be given such that $f(s) \in Y$`;
+	export let input: string = 'Hello world';
 	import katex from 'katex';
 
-	const output = input
+	$: output = input
 		.replace(/\$\$(.+?)\$\$/g, (match: string, math: string) => {
 			return katex.renderToString(math, { displayMode: true, throwOnError: false });
 			// return `<KaTeX math={"${p1}"} displayMath />`;

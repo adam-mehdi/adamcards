@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
+	import KaTeX from '$lib/KaTeX.svelte';
+	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
 	import { invoke } from '@tauri-apps/api/tauri';
 
 	interface FrontendCard {
@@ -113,8 +115,16 @@
 <p>Studying Deck: {deckId}</p>
 
 {#if !done}
-	<h3>{card ? card.front : ''}</h3>
-	<h3 class={back ? '' : 'hidden'}>{card ? card.back : ''}</h3>
+	<!-- <h3>{card ? card.front : ''}</h3> -->
+
+	<div>
+		<KaTeXRenderer input={card ? card.front.toString() : ''} />
+	</div>
+	<div class={back ? '' : 'hidden'}>
+		<KaTeXRenderer input={card ? card.back.toString() : ''} />
+	</div>
+
+	<!-- <h3 class={back ? '' : 'hidden'}>{card ? card.back : ''}</h3> -->
 	<br />
 	<div class={back ? '' : 'hidden'}>
 		<button on:click={() => handleReviewResponse(1)}>Again</button>
