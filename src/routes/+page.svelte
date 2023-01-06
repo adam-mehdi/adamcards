@@ -10,10 +10,9 @@
 <h1>Welcome to MI/O2</h1>
 <em>Memory Input Output 2</em>
 <h2>My Decks</h2>
-<br />
 <DeckList />
-<h2>Create Deck</h2>
-<CreateDeckFromCsvButton />
+<hr />
+<a href="/create-deck"><button>Create Deck</button></a>
 <br />
 <hr />
 <a href="/demo">Svelte Examples</a>

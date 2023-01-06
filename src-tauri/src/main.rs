@@ -3,7 +3,7 @@
   windows_subsystem = "windows"
 )]
 
-use chrono::{NaiveDateTime, NaiveDate, DateTime, Utc};
+use chrono::{NaiveDateTime, NaiveDate, DateTime, Utc, TimeZone};
 use serde::{Serialize, Deserialize};
 use std::sync::{Mutex, Arc};
 
@@ -49,7 +49,7 @@ fn main() {
     .manage(review_session_state)
     // commands before greet implement actual mio2 functionality, everything else is for
     // illustrative purposes only and will be removed in the future.
-    .invoke_handler(tauri::generate_handler![get_next_card, create_card_from_csv, get_decks, post_review])
+    .invoke_handler(tauri::generate_handler![get_next_card, create_card_from_csv, get_decks, post_review, create_deck])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");
 }
@@ -149,7 +149,17 @@ fn post_review(state: tauri::State<ReviewSessionState>, deck_id: usize, review_s
   Ok("Success".to_string())
 }
 
-/*
-TODO
-- Add the current card to the review state struct.
-*/
+
+#[derive(Serialize, Deserialize)]
+struct NewDeckInfo {
+  name: String,
+  deadline_string: String,
+  text: String,
+}
+
+#[tauri::command]
+fn create_deck(deck_info: NewDeckInfo) {
+  println!("{}", deck_info.name); 
+  println!("{}", deck_info.deadline_string); // RFC3339
+  println!("{}", deck_info.text);
+}

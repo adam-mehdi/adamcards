@@ -29,20 +29,24 @@
 			} catch (err) {
 				// The promise rejection returns a string, but there's no way to tell typescript this
 				// so the following logic is required to assign the err to message
-				if ( typeof err === 'string') {
-					message = err; 
+				if (typeof err === 'string') {
+					message = err;
 				} else {
 					// This should never run, but it's here just in case...
-					message = "error opening file and error returned is of unexpected type, see console for details.";
+					message =
+						'error opening file and error returned is of unexpected type, see console for details.';
 					console.error(err);
 				}
 			}
 		}
-
 	};
 </script>
 
 <div>
-	<button on:click={handleOpen}>Create Deck From CSV</button>
+	<form>
+		<input type="date" />
+		<input type="time" />
+		<button on:click={handleOpen}>Create Deck From CSV</button>
+	</form>
 	<p>{message}</p>
 </div>
