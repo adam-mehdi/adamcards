@@ -21,7 +21,7 @@
 <span class:expanded on:click={toggle} on:keypress={toggle}>{name}</span>
 
 {#if expanded}
-	<ul transition:slide={{duration:300}}>
+	<ul transition:slide={{duration:50}}>
 		{#each files as file}
 			<li>
 				{#if file.type === 'folder'}

@@ -33,7 +33,7 @@
 </script>
 
 <hr />
-<h1>EditableCard.Svelte</h1>
+<!-- <h1>EditableCard.Svelte</h1> -->
 <div>
 	<label>
 		Front
