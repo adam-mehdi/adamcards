@@ -5,12 +5,17 @@
 
 use chrono::{NaiveDateTime, NaiveDate}; // , DateTime, Utc, TimeZone};
 use serde::{Serialize, Deserialize};
-use tauri::{api::path::resolve_path, Manager};
+use tauri::{api::path::resolve_path, Manager, App};
 use std::{sync::{Mutex, Arc}, path::PathBuf};
 
 struct ReviewSessionState {
   cards_arc: Arc<Mutex<Vec<FrontendCard>>>,
 }
+
+struct AppDataDirState{
+  path: Option<PathBuf>
+}
+
 fn main() {
   let mut cards = Vec::new(); 
   cards.push(
@@ -53,7 +58,11 @@ fn main() {
       let resolver = handle.path_resolver();
       let data_dir = Some(resolver.app_data_dir().unwrap());
 
-      app.manage(data_dir);
+      let app_data_dir_state = AppDataDirState {
+        path: data_dir,
+      };
+
+      app.manage(app_data_dir_state);
       app.manage(review_session_state);
 
       Ok(())
@@ -171,8 +180,8 @@ struct NewDeckInfo {
 }
 
 #[tauri::command]
-fn create_deck(data_dir: tauri::State<Option<PathBuf>>, deck_info: NewDeckInfo) {
-  let disp = data_dir.as_ref().unwrap();
+fn create_deck(data_dir: tauri::State<AppDataDirState>, deck_info: NewDeckInfo) {
+  let disp = data_dir.path.as_ref().unwrap();
   println!("DD: {}", disp.display());
   println!("{}", deck_info.name); 
   println!("{}", deck_info.deadline_string); // RFC3339
