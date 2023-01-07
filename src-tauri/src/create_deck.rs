@@ -18,14 +18,14 @@ use crate::utils::{
     redistribute_quotas,
 };
 
-pub fn create_deck_from_string(name: String, deadline: String, text: String) -> Result<String, String>{
-    // Check if deck already exists with this name, error if so
-    // Construct path to write to
-    // - get data dir
-    // - append decks
-    Ok("Deck Created".into())
+// pub fn create_deck_from_string(name: String, deadline: String, text: String) -> Result<String, String>{
+//     // Check if deck already exists with this name, error if so
+//     // Construct path to write to
+//     // - get data dir
+//     // - append decks
+//     Ok("Deck Created".into())
     
-}
+// }
 
 pub fn create_deck(deadline: String, path: String) {
 

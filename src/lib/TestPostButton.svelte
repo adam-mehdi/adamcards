@@ -1,16 +1,17 @@
 <script lang="ts">
 	interface DeckEntry {
-		name: String;
-		deadlineString: String;
-		deadlineDt: Date;
+			name: String;
+			deadlineString: String;
+			deadlineDt: Date;
 	}
 
-	let deadline = new Date('2023-02-20 22:22');
-	console.log(deadline.toISOString().slice(0, -5));
+	let deadlineString = '2023-02-20T22:22';
+	let deadline = new Date(deadlineString);
+	// console.log(deadline.toISOString().slice(0, -5));
 
 	let testData: DeckEntry = {
 		name: 'Test Deck',
-		deadlineString: '2023-02-20T22:22',
+		deadlineString: deadlineString,
 		deadlineDt: deadline
 	};
 

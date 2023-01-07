@@ -3,7 +3,7 @@
   windows_subsystem = "windows"
 )]
 
-use chrono::{NaiveDateTime, NaiveDate, DateTime, Utc, TimeZone};
+use chrono::{NaiveDateTime, NaiveDate}; // , DateTime, Utc, TimeZone};
 use serde::{Serialize, Deserialize};
 use std::sync::{Mutex, Arc};
 
@@ -97,7 +97,7 @@ struct ExperimentalDeckEntry {
 
 
 
-
+#[allow(dead_code)]
 #[tauri::command]
 async fn pde(deck_entry: ExperimentalDeckEntry) -> String {
   println!("Hello! From Rust {}, {}", deck_entry.name, deck_entry.ndt);
@@ -144,7 +144,7 @@ fn get_next_card(state: tauri::State<ReviewSessionState>, deck_id: usize) -> Res
 }
 
 #[tauri::command]
-fn post_review(state: tauri::State<ReviewSessionState>, deck_id: usize, review_score: u8) -> Result<String, String> {
+fn post_review(_state: tauri::State<ReviewSessionState>, _deck_id: usize, review_score: u8) -> Result<String, String> {
   println!("Review Score: {}", review_score);
   Ok("Success".to_string())
 }
