@@ -5,7 +5,8 @@
 
 use chrono::{NaiveDateTime, NaiveDate}; // , DateTime, Utc, TimeZone};
 use serde::{Serialize, Deserialize};
-use std::sync::{Mutex, Arc};
+use tauri::{api::path::resolve_path, Manager};
+use std::{sync::{Mutex, Arc}, path::PathBuf};
 
 struct ReviewSessionState {
   cards_arc: Arc<Mutex<Vec<FrontendCard>>>,
@@ -45,13 +46,25 @@ fn main() {
     cards_arc: Arc::new(Mutex::new(cards)),
   };
 
+
   tauri::Builder::default()
-    .manage(review_session_state)
+    .setup(|app| {
+      let handle = app.handle();
+      let resolver = handle.path_resolver();
+      let data_dir = Some(resolver.app_data_dir().unwrap());
+
+      app.manage(data_dir);
+      app.manage(review_session_state);
+
+      Ok(())
+    })
     // commands before greet implement actual mio2 functionality, everything else is for
     // illustrative purposes only and will be removed in the future.
     .invoke_handler(tauri::generate_handler![get_next_card, create_card_from_csv, get_decks, post_review, create_deck])
     .run(tauri::generate_context!())
+    
     .expect("error while running tauri application");
+
 }
 
 
@@ -129,13 +142,13 @@ struct FrontendCard {
 }
 
 #[tauri::command]
-fn get_next_card(state: tauri::State<ReviewSessionState>, deck_id: usize) -> Result<FrontendCard, String> {
+fn get_next_card(cardsthing: tauri::State<ReviewSessionState>, deck_id: usize) -> Result<FrontendCard, String> {
   // Get next card.
   // if there are no cards to review, return 'NoCardsToReview'
   println!("Get next card for deck {}", deck_id);
 
   // Rewrite this later to handle not being able to get the lock
-  let mut cards = state.cards_arc.lock().unwrap();
+  let mut cards = cardsthing.cards_arc.lock().unwrap();
   
   match cards.pop() {
     Some(card) => Ok(card),
@@ -158,8 +171,11 @@ struct NewDeckInfo {
 }
 
 #[tauri::command]
-fn create_deck(deck_info: NewDeckInfo) {
+fn create_deck(data_dir: tauri::State<Option<PathBuf>>, deck_info: NewDeckInfo) {
+  let disp = data_dir.as_ref().unwrap();
+  println!("DD: {}", disp.display());
   println!("{}", deck_info.name); 
   println!("{}", deck_info.deadline_string); // RFC3339
   println!("{}", deck_info.text);
+ 
 }
