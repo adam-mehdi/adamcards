@@ -9,25 +9,15 @@
 		name: string;
 		files?: FileSystemObject[];
 		expanded?: boolean;
-		deadlineDate?: string;
-		deadlineTime?: string;
+		deadlineString?: string | null;
 	};
 
 	export let expanded = false;
 	export let name: string = '';
 	export let type: 'folder' | 'file' = 'folder';
-	export let deadlineDate: string | null = null;
-	export let deadlineTime: string | null = null;
+	export let deadlineString: string | null = null;
 	export let files: FileSystemObject[];
 	let foldersMuted: boolean = false;
-
-	function handleNewFolder() {
-		// add a new folder
-	}
-
-	function handleNewFile() {
-		//
-	}
 
 	function toggle() {
 		if (!foldersMuted) {
@@ -41,16 +31,14 @@
 	}
 
 	let deadlineEditable: boolean = false;
-	let nameEditable: boolean = false;
 
-	// function handleDeadlineClick() {
-	// 	deadlineEditable = true;
-	// 	foldersMuted = true;
-	// }
+	function handleDeadlineClick() {
+		deadlineEditable = true;
+		foldersMuted = true;
+	}
 
 	// Write out click logic for the deadline string
 	function handleOutclick() {
-		nameEditable = false;
 		deadlineEditable = false;
 		foldersMuted = false;
 	}
@@ -62,14 +50,6 @@
 	function handleEditableDeadlineKeypress(e: KeyboardEvent) {
 		if (e.code === 'Enter') {
 			deadlineEditable = false;
-			foldersMuted = false;
-		}
-	}
-
-	function handleEditableNameKeypress(e: KeyboardEvent) {
-		if (e.code === 'Enter') {
-			nameEditable = false;
-			foldersMuted = false;
 		}
 	}
 
@@ -79,19 +59,7 @@
 <div class="folder-container">
 	<span class="folder" class:expanded on:click={toggle} on:keypress={toggle}>
 		<span class="span-left">
-			{#if nameEditable}
-				<input
-					type="text"
-					bind:value={name}
-					use:focusOnMount
-					on:click|stopPropagation
-					on:keypress|stopPropagation={handleEditableNameKeypress}
-					use:clickOutside={nameEditable}
-					on:outclick={handleOutclick}
-				/>
-			{:else}
-				{name}
-			{/if}
+			{name}
 		</span>
 		<span class="span-right">
 			{#if deadlineEditable}
@@ -99,18 +67,21 @@
 					on:click|stopPropagation
 					on:keypress|stopPropagation={handleEditableDeadlineKeypress}
 					use:clickOutside={deadlineEditable}
-					on:outclick={handleOutclick}
-				>
-					<!-- <input type="text" bind:value={deadlineString} use:focusOnMount /> -->
-					<input type="date" bind:value={deadlineDate} />
-					<input type="time" bind:value={deadlineTime} />
+					on:outclick={handleOutclick}>
+					<input type="text" bind:value={deadlineString} use:focusOnMount />
 				</span>
 			{:else}
-				<span>{deadlineDate && deadlineTime ? `Due ${deadlineDate} at ${deadlineTime}` : ''}</span>
+				<!-- UPDATE THIS  -->
+				<span
+					on:keydown|stopPropagation={() => {
+						!deadlineEditable && handleDeadlineClick();
+					}}
+					on:click|stopPropagation={() => {
+						!deadlineEditable && handleDeadlineClick();
+					}}>{deadlineString ? deadlineString : 'No Deadline Set'}</span
+				>
 			{/if}
-			<span class="folder-buttons-span">
-				<!-- Will eventually wrap the review button in an a tag and move the on:click|stopPro.. to that tag -->
-				<button on:click|stopPropagation>Review</button>
+			<span>
 				<button
 					class="folder-settings-button"
 					on:keydown|stopPropagation={toggleSettingsTray}
@@ -122,36 +93,10 @@
 		</span>
 	</span>
 	{#if settingsTrayOpen}
-		<div
-			class="settings-tray"
-			use:clickOutside={settingsTrayOpen}
-			on:outclick={() => {
-				settingsTrayOpen = false;
-			}}
-		>
+		<div class="settings-tray">
 			<ul>
-				<li class="settings-tray-option">
-					<button
-						on:click={() => {
-							deadlineEditable = true;
-							foldersMuted = true;
-							settingsTrayOpen = false;
-						}}
-					>
-						Edit Deadline
-					</button>
-				</li>
-				<li class="settings-tray-option">
-					<button
-						on:click={() => {
-							nameEditable = true;
-							foldersMuted = true;
-							settingsTrayOpen = false;
-						}}
-					>
-						Edit Deck Name
-					</button>
-				</li>
+				<li class="settings-tray-option">Edit Deadline</li>
+				<li class="settings-tray-option">Edit Deck Name</li>
 				<li class="settings-tray-option">Edit Deck</li>
 				<li class="settings-tray-option">Delete Deck</li>
 			</ul>
@@ -168,8 +113,7 @@
 						bind:files={file.files}
 						bind:name={file.name}
 						bind:expanded={file.expanded}
-						bind:deadlineDate={file.deadlineDate}
-						bind:deadlineTime={file.deadlineTime}
+						bind:deadlineString={file.deadlineString}
 						type="folder"
 					/>
 				{:else}
@@ -180,11 +124,11 @@
 		<li>
 			{#if type === 'folder'}
 				<span class="create-file-folder-row">
-					<span class="span-left"><button on:click={handleNewFile}>+ File</button></span>
+					<span class="span-left"><button>+ File</button></span>
 					<span class="span-right" />
 				</span>
 				<span class="create-file-folder-row">
-					<span class="span-left"><button on:click={handleNewFolder}>+ Folder</button></span>
+					<span class="span-left"><button>+ Folder</button></span>
 					<span class="span-right" />
 				</span>
 			{/if}
@@ -193,12 +137,6 @@
 {/if}
 
 <style>
-	.folder-buttons-span {
-		width: 100px;
-		display: flex;
-		justify-content: space-between;
-	}
-
 	.folder-container {
 		position: relative;
 	}
@@ -246,7 +184,7 @@
 	.span-right {
 		display: flex;
 		justify-content: space-between;
-		width: 300px;
+		width: 250px;
 	}
 	.span-left {
 		width: 33%;
