@@ -26,7 +26,7 @@
 		<tr>
 			<td>{entry.name}</td>
 			<td>{entry.deadline_string}</td>
-			<td><button>Edit</button></td>
+			<td><a href="/{entry.id}/review"><button>Edit</button></a></td>
 			<td><a href="/{entry.id}/review"><button>Review</button></a></td>
 		</tr>
 	{/each}

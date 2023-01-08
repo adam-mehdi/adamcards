@@ -7,12 +7,18 @@
 	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
 	import Folder from '$lib/Folder.svelte';
 
-	// load contents of ~/data/decks recursivey
+	// modes: normal and editing
+	// - normal: go to review when clicking on deck, expand/collapse on deck
+	// - editing: edit when clicking on deck, create new deck when clicking folder
+
 	type FileSystemObject = {
 		type: 'folder' | 'file';
 		name: string;
 		files?: FileSystemObject[];
 	};
+
+	// load contents of ~/data/decks (call to backend)
+
 	let root: FileSystemObject[] = [
 		{
 			type: 'folder',
@@ -51,6 +57,7 @@
 <a href="/create-deck"><button>Create Deck</button></a>
 <br />
 <hr />
+<h3>Editable Card</h3>
 <a href="/demo">Svelte Examples</a>
 
 <style>
