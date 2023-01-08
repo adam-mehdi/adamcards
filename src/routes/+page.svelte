@@ -12,6 +12,7 @@
 		name: string;
 		files?: FileSystemObject[];
 		expanded?: boolean;
+		deadlineString?: string;
 	};
 
 	// load contents of ~/data/decks (call to backend)
@@ -21,7 +22,8 @@
 			type: 'folder',
 			name: 'Important work stuff',
 			files: [{ type: 'file', name: 'quarterly-results.gif' }],
-			expanded: true
+			expanded: true,
+			deadlineString: '2022-10-10T22:22Z'
 		},
 		{
 			type: 'folder',
@@ -34,10 +36,13 @@
 						{ type: 'file', name: 'treadmill.gif' },
 						{ type: 'file', name: 'rope-jumping.gif' }
 					],
-					expanded: false
+					expanded: false,
+					deadlineString: '2022-10-10T22:22Z'
 				},
 				{ type: 'file', name: 'cat-roomba.gif' }
-			]
+			],
+			expanded: true,
+			deadlineString: '2022-10-10T22:22:00.000Z'
 		},
 		{ type: 'file', name: 'TODO.md' }
 	];
@@ -48,7 +53,7 @@
 
 <h2>Decks</h2>
 <div class="folders">
-	<Folder name="My Decks" files={root} expanded />
+	<Folder name="My Decks" bind:files={root} expanded />
 </div>
 
 <h2>Test deck</h2>
