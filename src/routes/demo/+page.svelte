@@ -1,9 +1,9 @@
 <script lang="ts">
-	import Greet from '$lib/Greet.svelte';
-	import DeckList from '$lib/DeckList.svelte';
-	import TestPostButton from '$lib/TestPostButton.svelte';
-	import CreateDeckFromCsvButton from '$lib/CreateDeckFromCSVButton.svelte';
-	import EditableCard from '$lib/EditableCard.svelte';
+	import Greet from '$lib/illustrations/Greet.svelte';
+	import DeckList from '$lib/illustrations/DeckList.svelte';
+	import TestPostButton from '$lib/illustrations/TestPostButton.svelte';
+	import CreateDeckFromCsvButton from '$lib/illustrations/CreateDeckFromCSVButton.svelte';
+	import EditableCard from '$lib/illustrations/EditableCard.svelte';
 	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
 </script>
 

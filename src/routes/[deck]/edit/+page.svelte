@@ -1,13 +1,37 @@
 <script lang="ts">
 	import { flip } from 'svelte/animate'
 	import  Search  from '$lib/SearchBarFilter.svelte'
+	import { page } from '$app/stores';
+	import { invoke } from '@tauri-apps/api/tauri';
+
+	// load cards from deck
+	interface Card {
+		id: number,
+		front: string,
+		back: string,
+		boxPos: number,
+	}
+	const deckName = $page.params.deck;
+	let cards: Card[] = [];
+	async function getCards() {
+		cards = await invoke('read_deck', { deckName });
+	} 
+	getCards();
+
+	// 
+
+	// on exit, write to quotas and decks
+
+	
+
+
 
 	const dragDuration = 300
-	let cards: number[] = Array(20).fill(1).map((_, i) => i + 1)
-	let draggingCard: number | undefined;
+	// let cards: number[] = Array(20).fill(1).map((_, i) => i + 1)
+	let draggingCard: Card | undefined;
 	let animatingCards = new Set()
 
-	function swapWith(card: number) {
+	function swapWith(card: Card) {
 		if (draggingCard === card || animatingCards.has(card)) return
 		animatingCards.add(card)
 		setTimeout(() => animatingCards.delete(card), dragDuration)
@@ -35,6 +59,7 @@
 </script>
 <a href="/">Home</a>
 
+
 <div class="center_panel">
 	<div class="center_card">
 			<div class="front">
@@ -49,14 +74,19 @@
 		
 		<div class="center_bar">
 		<!-- 	if editing; specify deadline if creating -->
-			<Search bind:prompt on:input={filterCards} />
+			
+			
+			
+			<button on:click={createCard}> |-> </button>
 			<button on:click={createCard}> >> </button>
-			<button on:click={createCard}> |--> </button>
+			<br> <hr>
+			<Search bind:prompt on:input={filterCards} />
 		</div>
 			
 	</div>
 </div>
 
+{#if cards.length > 0}
 <div class="container">
 	{#each cards as card (card)}
 		<div
@@ -65,20 +95,21 @@
 			draggable="true"
 			on:dragstart={() => draggingCard = card}
 			on:dragend={() => draggingCard = undefined}
-		  on:dragenter={() => swapWith(card)}
+			on:dragenter={() => swapWith(card)}
 			on:dragover|preventDefault
 		>
 			<div class="front">
-				<textarea bind:value={front} />
+				<textarea bind:value={card.front} />
 			</div>
 			
 		<div class="back">
-				<textarea bind:value={back} />
+				<textarea bind:value={card.back} />
 		</div>
 			
 		</div>
 	{/each}
 </div>
+{/if}
 
 <style>
 	.container {
