@@ -6,6 +6,7 @@
 	import EditableCard from '$lib/EditableCard.svelte';
 	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
 	import Folder from '$lib/Folder.svelte';
+	import { exclude_internal_props } from 'svelte/internal';
 
 	// modes: normal and editing
 	// - normal: go to review when clicking on deck, expand/collapse on deck
@@ -15,6 +16,7 @@
 		type: 'folder' | 'file';
 		name: string;
 		files?: FileSystemObject[];
+		expanded?: boolean;
 	};
 
 	// load contents of ~/data/decks (call to backend)
@@ -23,7 +25,8 @@
 		{
 			type: 'folder',
 			name: 'Important work stuff',
-			files: [{ type: 'file', name: 'quarterly-results.gif' }]
+			files: [{ type: 'file', name: 'quarterly-results.gif' }],
+			expanded: true
 		},
 		{
 			type: 'folder',
@@ -35,7 +38,8 @@
 					files: [
 						{ type: 'file', name: 'treadmill.gif' },
 						{ type: 'file', name: 'rope-jumping.gif' }
-					]
+					],
+					expanded: false
 				},
 				{ type: 'file', name: 'cat-roomba.gif' }
 			]
