@@ -12,7 +12,8 @@
 		name: string;
 		files?: FileSystemObject[];
 		expanded?: boolean;
-		deadlineString?: string;
+		deadlineDate?: string;
+		deadlineTime?: string;
 	};
 
 	// load contents of ~/data/decks (call to backend)
@@ -23,7 +24,8 @@
 			name: 'Important work stuff',
 			files: [{ type: 'file', name: 'quarterly-results.gif' }],
 			expanded: true,
-			deadlineString: '2022-10-10T22:22Z'
+			deadlineDate: '2022-10-10',
+			deadlineTime: '22:22'
 		},
 		{
 			type: 'folder',
@@ -37,12 +39,14 @@
 						{ type: 'file', name: 'rope-jumping.gif' }
 					],
 					expanded: false,
-					deadlineString: '2022-10-10T22:22Z'
+					deadlineDate: '2022-10-10',
+					deadlineTime: '22:22'
 				},
 				{ type: 'file', name: 'cat-roomba.gif' }
 			],
 			expanded: true,
-			deadlineString: '2022-10-10T22:22:00.000Z'
+			deadlineDate: '2022-10-10',
+			deadlineTime: '22:22'
 		},
 		{ type: 'file', name: 'TODO.md' }
 	];
