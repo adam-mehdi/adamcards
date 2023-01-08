@@ -4,53 +4,42 @@
 )]
 
 // use chrono::{NaiveDateTime, NaiveDate, DateTime, Utc, TimeZone};
-use serde::{Serialize, Deserialize};
+// use serde::{
+//   Serialize, 
+//   Deserialize
+// };
 use tauri::{
   // api::path::resolve_path, 
   Manager, 
   // App,
   State
 };
-use std::{sync::{Mutex, Arc}, path::PathBuf};
+use std::{ 
+    sync::{
+      Mutex, 
+      Arc
+    },
+    // fs::File, 
+    // path::PathBuf, 
+    // io::BufReader,
+    // io::prelude::*,
+};
 
-// mod illustrations;
+
+// uncomment to be able to call, e.g., mio0::review_session
+// mod mio0;
 
 
-/*
- * Structs
- */
+mod update;
+use update::read_deck;
 
-// want ReviewSession to be Vec<LeitnerBoxSystem>
-#[allow(dead_code)]
-struct ReviewSessionState {
-  cards_arc: Arc<Mutex<Option<LeitnerBoxSystem>>>,
-}
-#[allow(dead_code)]
-struct LeitnerBoxSystem {
-  deck_name: String
-}
-// Path to folder with app data
-#[allow(dead_code)]
-struct AppDataDirState{
-  path: Option<PathBuf>
-}
-
-// info about a deck
-#[derive(Serialize, Deserialize)]
-struct DeckEntry {
-  id: usize,
-  name: String,
-  deadline_string: String,
-}
-
-// card with info about frontend
-#[derive(Serialize, Deserialize)]
-struct FrontendCard {
-  id: usize,
-  front: String,
-  back: String,
-}
-
+mod utils;
+use utils::{
+  ReviewSessionState,
+  // LeitnerBoxSystem,
+  AppDataDirState,
+  // DeckEntry,
+};
 /*
  * Run builder code
  */
@@ -79,7 +68,8 @@ fn main() {
     // illustrative purposes only and will be removed in the future.
     .invoke_handler(tauri::generate_handler![
       get_next_card, 
-      post_review, 
+      // post_review, 
+      read_deck,
       ])
     .run(tauri::generate_context!())
     
@@ -92,7 +82,8 @@ fn main() {
  * MIO functions
  */
 
- #[allow(dead_code)]
+ // TODO: move to review.rs
+#[allow(dead_code)]
 #[tauri::command] 
 fn get_next_card(_state: State<ReviewSessionState>, deck_id: usize) -> Result<i32, String> {
   // Get next card.
@@ -106,18 +97,14 @@ fn get_next_card(_state: State<ReviewSessionState>, deck_id: usize) -> Result<i3
 
 // invoke('post_review', {deckId: usize, reviewScore: u8})
 
-#[allow(dead_code)]
-#[tauri::command]
-fn post_review(_state: State<ReviewSessionState>, data_dir: State<AppDataDirState>,
-  deck_id: usize, review_score: u8) -> Result<String, String> {
+// #[allow(dead_code)]
+// #[tauri::command]
+// fn post_review(_state: State<ReviewSessionState>, data_dir: State<AppDataDirState>,
+//   deck_id: usize, review_score: u8) -> Result<String, String> {
 
-  println!("{} {}", review_score, deck_id);
-  get_deck_path(data_dir, "test".to_owned());
-  Ok("Success".to_string())
-}
-
-fn get_deck_path(data_dir: State<AppDataDirState>, deck_name: String) -> PathBuf {
-  data_dir.path.as_ref().unwrap().join(deck_name)
-}
+//   println!("{} {}", review_score, deck_id);
+//   get_deck_path(data_dir, "test".to_owned());
+//   Ok("Success".to_string())
+// }
 
 

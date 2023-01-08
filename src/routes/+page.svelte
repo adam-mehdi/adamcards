@@ -50,6 +50,7 @@
 		},
 		{ type: 'file', name: 'TODO.md' }
 	];
+	let deck_name = 'test';
 </script>
 
 <h1>MIO</h1>
@@ -59,14 +60,11 @@
 	<Folder name="My Decks" bind:files={root} expanded />
 </div>
 
-<h2>My Decks</h2>
-<DeckList />
-<hr />
-<a href="/create-deck"><button>Create Deck</button></a>
-<br />
-<hr />
-<h3>Editable Card</h3>
-<a href="/demo">Svelte Examples</a>
+<h2>Test deck</h2>
+<a href="/{deck_name}/edit"><button>Edit/Create</button></a>
+<br>
+<a href="/{deck_name}/review"><button>Review</button></a>
+
 
 <style>
 	.folders {

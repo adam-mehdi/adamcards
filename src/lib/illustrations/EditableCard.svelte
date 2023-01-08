@@ -1,8 +1,11 @@
 <script lang="ts">
 	// illustrates timeout-based backend save functionality
+	// i.e. if stop editing, wait for 3 seconds and save
+	// reference when making card for saving functionality
 	import { save } from '@tauri-apps/api/dialog';
 	import katex from 'katex';
-	import KaTeXRenderer from './KaTeXRenderer.svelte';
+	import CreateDeckFromCsvButton from './CreateDeckFromCSVButton.svelte';
+	import KaTeXRenderer from '../KaTeXRenderer.svelte';
 
 	let front = '';
 	let back = '';
