@@ -1,7 +1,10 @@
 use std::{
     fs,
     fs::File,
-    path::{Path, PathBuf},
+    path::{
+        Path, 
+        // PathBuf
+    },
     io:: { BufReader, BufWriter },
     io::prelude::*
 };
@@ -17,16 +20,16 @@ use crate::utils::{
     days_until,
     redistribute_quotas,
 };
-fn check_for_duplicates(folder_path: PathBuf, fileName: String){}
+// fn check_for_duplicates(folder_path: PathBuf, fileName: String){}
 
-pub fn create_deck_from_string(name: String, deadline: String, text: String) -> Result<String, String>{
-    // Check if deck already exists with this name, error if so
-    // Construct path to write to
-    // - get data dir
-    // - append decks
-    Ok("Deck Created".into())
+// pub fn create_deck_from_string(name: String, deadline: String, text: String) -> Result<String, String>{
+//     // Check if deck already exists with this name, error if so
+//     // Construct path to write to
+//     // - get data dir
+//     // - append decks
+//     Ok("Deck Created".into())
     
-}
+// }
 
 pub fn create_deck(deadline: String, path: String) {
 

@@ -1,10 +1,5 @@
 <script lang="ts">
-	import Greet from '../lib/Greet.svelte';
-	import DeckList from '../lib/DeckList.svelte';
-	import TestPostButton from '$lib/TestPostButton.svelte';
-	import CreateDeckFromCsvButton from '$lib/CreateDeckFromCSVButton.svelte';
-	import EditableCard from '$lib/EditableCard.svelte';
-	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
+	import DeckList from '$lib/illustrations/DeckList.svelte';
 	import Folder from '$lib/Folder.svelte';
 	import { exclude_internal_props } from 'svelte/internal';
 
