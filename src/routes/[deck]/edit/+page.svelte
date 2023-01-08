@@ -33,6 +33,7 @@
 	}
 	
 </script>
+<a href="/">Home</a>
 
 <div class="center_panel">
 	<div class="center_card">
@@ -103,12 +104,12 @@
 	
 	.front {
 		border-radius: 16px; 
-		background-color: ivory;
+		/* background-color: ivory; */
 	}
 	
 	.back {
 		border-radius: 16px; 
-		background-color: #B9D9EB;
+		/* background-color: #B9D9EB; */
 	}
 	
 	textarea { 
@@ -149,7 +150,7 @@
 	
 	.center_bar {
 		display: flex;
-		background-color:ivory;
+		/* background-color:ivory; */
 		height: 32px;
 	}
 	

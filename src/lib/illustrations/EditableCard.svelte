@@ -1,4 +1,5 @@
 <script lang="ts">
+	// illustrates timeout-based backend save functionality
 	import { save } from '@tauri-apps/api/dialog';
 	import katex from 'katex';
 	import KaTeXRenderer from './KaTeXRenderer.svelte';

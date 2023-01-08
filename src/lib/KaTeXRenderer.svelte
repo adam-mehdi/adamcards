@@ -4,10 +4,12 @@
 	import katex from 'katex';
 
 	$: output = input
+		// display math (centering equations)
 		.replace(/\$\$(.+?)\$\$/g, (match: string, math: string) => {
 			return katex.renderToString(math, { displayMode: true, throwOnError: false });
 			// return `<KaTeX math={"${p1}"} displayMath />`;
 		})
+		// inline math
 		.replace(/\$(.+?)\$/g, (match: string, math: string) => {
 			return katex.renderToString(math, { displayMode: false, throwOnError: false });
 		});

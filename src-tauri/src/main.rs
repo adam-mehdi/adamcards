@@ -3,63 +3,71 @@
   windows_subsystem = "windows"
 )]
 
-use chrono::{NaiveDateTime, NaiveDate}; // , DateTime, Utc, TimeZone};
+// use chrono::{NaiveDateTime, NaiveDate, DateTime, Utc, TimeZone};
 use serde::{Serialize, Deserialize};
-use tauri::{api::path::resolve_path, Manager, App};
+use tauri::{
+  // api::path::resolve_path, 
+  Manager, 
+  // App,
+  State
+};
 use std::{sync::{Mutex, Arc}, path::PathBuf};
 
-struct ReviewSessionState {
-  cards_arc: Arc<Mutex<Vec<FrontendCard>>>,
-}
+// mod illustrations;
 
+
+/*
+ * Structs
+ */
+
+// want ReviewSession to be Vec<LeitnerBoxSystem>
+#[allow(dead_code)]
+struct ReviewSessionState {
+  cards_arc: Arc<Mutex<Option<LeitnerBoxSystem>>>,
+}
+#[allow(dead_code)]
+struct LeitnerBoxSystem {
+  deck_name: String
+}
+// Path to folder with app data
+#[allow(dead_code)]
 struct AppDataDirState{
   path: Option<PathBuf>
 }
 
+// info about a deck
+#[derive(Serialize, Deserialize)]
+struct DeckEntry {
+  id: usize,
+  name: String,
+  deadline_string: String,
+}
+
+// card with info about frontend
+#[derive(Serialize, Deserialize)]
+struct FrontendCard {
+  id: usize,
+  front: String,
+  back: String,
+}
+
+/*
+ * Run builder code
+ */
 fn main() {
-  let mut cards = Vec::new(); 
-  cards.push(
-    FrontendCard{
-      id: 0,
-      front: "Front 0".into(),
-      back: "Back 0".into(),
-    }
-  );
-  cards.push(
-    FrontendCard{
-      id: 1,
-      front: "Let $x \\in X$ be given...".into(),
-      back: "Back 1".into(),
-    }
-  );
-   cards.push(
-    FrontendCard{
-      id: 2,
-      front: "Front 2".into(),
-      back: "Back 2".into(),
-    }
-  ); 
-  cards.push(
-    FrontendCard{
-      id: 3,
-      front: "Front 3".into(),
-      back: "Back 3".into(),
-    }
-  );
 
   let review_session_state = ReviewSessionState {
-    cards_arc: Arc::new(Mutex::new(cards)),
+    cards_arc: Arc::new(Mutex::new(None)),
   };
 
 
   tauri::Builder::default()
     .setup(|app| {
       let handle = app.handle();
-      let resolver = handle.path_resolver();
-      let data_dir = Some(resolver.app_data_dir().unwrap());
+      let data_dir = handle.path_resolver().app_data_dir().unwrap();
 
       let app_data_dir_state = AppDataDirState {
-        path: data_dir,
+        path: Some(data_dir),
       };
 
       app.manage(app_data_dir_state);
@@ -69,7 +77,10 @@ fn main() {
     })
     // commands before greet implement actual mio2 functionality, everything else is for
     // illustrative purposes only and will be removed in the future.
-    .invoke_handler(tauri::generate_handler![get_next_card, create_card_from_csv, get_decks, post_review, create_deck])
+    .invoke_handler(tauri::generate_handler![
+      get_next_card, 
+      post_review, 
+      ])
     .run(tauri::generate_context!())
     
     .expect("error while running tauri application");
@@ -77,114 +88,36 @@ fn main() {
 }
 
 
+/*
+ * MIO functions
+ */
 
-// #[tauri::command]
-// fn greet(state: tauri::State<ReviewSessionState>, name: &str) -> String {
-//   format!("Hello, {}! From Rust!! The special message is {}", name, state.info.lock().unwrap())
-// }
-
-// #[tauri::command]
-// fn update_special_info(state: tauri::State<ReviewSessionState>, special_info: &str) {
-//   *state.info.lock().unwrap() = special_info.to_string();
-// }
-
-#[derive(Serialize, Deserialize)]
-struct DeckEntry {
-  id: usize,
-  name: String,
-  deadline_string: String,
-}
-
-#[tauri::command]
-fn get_decks() -> Vec<DeckEntry> {
-
-  let deadline = NaiveDate::from_ymd_opt(2014, 11, 28).unwrap().and_hms_opt(12, 0, 0).unwrap();
-
-  let mut entries: Vec<DeckEntry> = Vec::new();
-
-  entries.push(DeckEntry {
-    id: 1,
-    name: "German".to_string(),
-    deadline_string: deadline.to_string(),
-  });
-
-  entries
-}
-
-#[derive(Serialize, Deserialize)]
-struct ExperimentalDeckEntry {
-  name: String,
-  ndt: NaiveDateTime,
-}
-
-
-
-#[allow(dead_code)]
-#[tauri::command]
-async fn pde(deck_entry: ExperimentalDeckEntry) -> String {
-  println!("Hello! From Rust {}, {}", deck_entry.name, deck_entry.ndt);
-  "TEST".to_string()
-
-}
-
-// THE FUNCTIONS FROM HERE ON ARE MIO
-
-
-#[tauri::command]
-async fn create_card_from_csv(card_path: &str) -> Result<String, String> {
-  println!("create_card_from_csv received: {}", card_path);
-
-  // Try to create the card from the CSV.
-  // Return any meaningful errors to the frontend if it fails 
-  // Otherwise let the user know it was a success
-
-  // Ok("Card Created".to_string());
-  Err("Not actually an error, create_card_from_csv not implemented".to_string())
-}
-
-
-#[derive(Serialize, Deserialize)]
-struct FrontendCard {
-  id: usize,
-  front: String,
-  back: String,
-}
-
-#[tauri::command]
-fn get_next_card(cardsthing: tauri::State<ReviewSessionState>, deck_id: usize) -> Result<FrontendCard, String> {
+ #[allow(dead_code)]
+#[tauri::command] 
+fn get_next_card(_state: State<ReviewSessionState>, deck_id: usize) -> Result<i32, String> {
   // Get next card.
   // if there are no cards to review, return 'NoCardsToReview'
   println!("Get next card for deck {}", deck_id);
 
   // Rewrite this later to handle not being able to get the lock
-  let mut cards = cardsthing.cards_arc.lock().unwrap();
-  
-  match cards.pop() {
-    Some(card) => Ok(card),
-    None => Err("NoCardsToReview".to_string()),
-  }
+  // let mut cards = lboxes.cards_arc.lock().unwrap();
+  Ok(0)
 }
 
+// invoke('post_review', {deckId: usize, reviewScore: u8})
+
+#[allow(dead_code)]
 #[tauri::command]
-fn post_review(_state: tauri::State<ReviewSessionState>, _deck_id: usize, review_score: u8) -> Result<String, String> {
-  println!("Review Score: {}", review_score);
+fn post_review(_state: State<ReviewSessionState>, data_dir: State<AppDataDirState>,
+  deck_id: usize, review_score: u8) -> Result<String, String> {
+
+  println!("{} {}", review_score, deck_id);
+  get_deck_path(data_dir, "test".to_owned());
   Ok("Success".to_string())
 }
 
-
-#[derive(Serialize, Deserialize)]
-struct NewDeckInfo {
-  name: String,
-  deadline_string: String,
-  text: String,
+fn get_deck_path(data_dir: State<AppDataDirState>, deck_name: String) -> PathBuf {
+  data_dir.path.as_ref().unwrap().join(deck_name)
 }
 
-#[tauri::command]
-fn create_deck(data_dir: tauri::State<AppDataDirState>, deck_info: NewDeckInfo) {
-  let disp = data_dir.path.as_ref().unwrap();
-  println!("DD: {}", disp.display());
-  println!("{}", deck_info.name); 
-  println!("{}", deck_info.deadline_string); // RFC3339
-  println!("{}", deck_info.text);
- 
-}
+
