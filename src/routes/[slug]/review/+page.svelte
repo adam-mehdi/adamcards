@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import KaTeX from '$lib/KaTeX.svelte';
+	// import KaTeX from '$lib/KaTeX.svelte';
 	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
 	import { invoke } from '@tauri-apps/api/tauri';
 

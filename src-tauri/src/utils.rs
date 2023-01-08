@@ -1,10 +1,13 @@
 
+use tauri;
 use std::{ 
     sync::{
       Mutex, 
       Arc
     },
-    path::PathBuf
+    path::PathBuf,
+    collections::hash_map::DefaultHasher,
+    hash::{ Hash, Hasher },
 };
 use serde::{
     Serialize, 
@@ -41,3 +44,16 @@ struct DeckEntry {
   pub deadline_string: String,
 }
 
+/*
+ * Helpers
+ */
+
+
+ // id of a card is hash of its deck name, front, and back fields concatenated
+#[tauri::command] 
+pub fn calculate_hash(deck_name: String, front: String, back: String) -> u64 {
+    let t = deck_name + &front + &back;
+    let mut s = DefaultHasher::new();
+    t.hash(&mut s);
+    s.finish()
+}

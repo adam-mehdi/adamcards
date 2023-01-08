@@ -3,43 +3,27 @@
   windows_subsystem = "windows"
 )]
 
-// use chrono::{NaiveDateTime, NaiveDate, DateTime, Utc, TimeZone};
-// use serde::{
-//   Serialize, 
-//   Deserialize
-// };
 use tauri::{
-  // api::path::resolve_path, 
   Manager, 
-  // App,
   State
 };
-use std::{ 
-    sync::{
+use std::sync::{
       Mutex, 
       Arc
-    },
-    // fs::File, 
-    // path::PathBuf, 
-    // io::BufReader,
-    // io::prelude::*,
-};
-
-
-// uncomment to be able to call, e.g., mio0::review_session
-// mod mio0;
-
+    };
 
 mod update;
-use update::read_deck;
+use update::read_decks;
 
 mod utils;
 use utils::{
   ReviewSessionState,
   // LeitnerBoxSystem,
   AppDataDirState,
+  calculate_hash
   // DeckEntry,
 };
+
 /*
  * Run builder code
  */
@@ -69,7 +53,8 @@ fn main() {
     .invoke_handler(tauri::generate_handler![
       get_next_card, 
       // post_review, 
-      read_deck,
+      read_decks,
+      calculate_hash
       ])
     .run(tauri::generate_context!())
     

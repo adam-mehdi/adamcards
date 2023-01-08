@@ -10,8 +10,11 @@ use serde::{
     Deserialize
 };
 
+use std::fs::{
+  read_dir,
+  File,
+};
 use std::{ 
-    fs::File, 
     path::PathBuf, 
     io::BufReader,
     io::prelude::*,
@@ -40,58 +43,69 @@ use crate::utils::{
 };
 // card with info about frontend
 #[derive(Serialize, Deserialize)]
-struct Card {
+pub struct Card {
   id: usize,
   box_pos: usize,
   last_review: String,
   front: String,
   back: String,
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct Deck {
-    cards: Vec<Card>,
-    deck_name: String
+  deck_name: String,
 }
 
 // pub fn read_decks(state: State<AppDataDirState>, fs_name: String) -> Vec<Deck> {
 // fs_name is the name of either a deck or folder
 // }
 
-fn get_deck_path(data_dir: State<AppDataDirState>, deck_name: &String) -> PathBuf {
-  data_dir.path.as_ref().unwrap().join("decks").join(deck_name)
+// get immutable path to app data
+fn get_root_path(data_dir: State<AppDataDirState>) -> PathBuf {
+  // entry refers to the name of either a deck or a directory
+  data_dir.path.as_ref().unwrap().join("decks")
 }
 
+// returns vector of deck directory paths if they are children of `entry`
+fn get_child_decks(root: &PathBuf, entry: &String) -> Vec<PathBuf> {
+  read_dir(root).expect("wrong root to appdata")
+    .filter_map(Result::ok)
+    .filter(|f| f.path().is_dir() && f.path().starts_with(entry))
+    .map(|x| x.path())
+    .collect::<Vec<PathBuf>>()
+}
+
+pub fn path2string(path: &PathBuf) -> String {
+  path.clone().into_os_string().into_string().unwrap()
+}
+
+
 #[tauri::command] 
-pub fn read_deck(state: State<AppDataDirState>, deck_name: String) -> Deck {
-  let deck_path = get_deck_path(state, &deck_name);
-
-
-  let file = File::open(deck_path.join("cards.csv"))
-    .expect("file not found");
-  let reader = BufReader::new(file);
-
+pub fn read_decks(state: State<AppDataDirState>, entry: String) -> Vec<Card> {
+  let root = get_root_path(state);
+  let deck_names = get_child_decks(&root, &entry);
   let mut cards: Vec<Card> = Vec::new();
 
-  for line in reader.lines().skip(1) {
-    let line = line.expect("failed to read line");
-    let mut field_it = line.split(" >> ");
 
-    let id = field_it.next().unwrap().trim().parse::<usize>().unwrap();
-    let box_pos = field_it.next().unwrap().parse::<usize>().unwrap();
+  for deck_name in deck_names {
+    let file = File::open(root.join("cards.csv")).expect("file not found");
+    let file = BufReader::new(file);
 
-    let last_review = field_it.next().unwrap().to_string();
+    for line in file.lines().skip(1) {
+      let line = line.expect("failed to read line");
+      let mut field_it = line.split(" >> ");
 
-    let front = field_it.next().unwrap().to_owned();
-    let back = field_it.next().unwrap().to_owned();
+      let id = field_it.next().unwrap().trim().parse::<usize>().unwrap();
+      let box_pos = field_it.next().unwrap().parse::<usize>().unwrap();
+      let last_review = field_it.next().unwrap().to_string();
+      let front = field_it.next().unwrap().to_owned();
+      let back = field_it.next().unwrap().to_owned();
 
-    cards.push( Card {
-      id, 
-      box_pos, 
-      last_review, 
-      front, 
-      back
-    });
+      cards.push( Card {
+        id, 
+        box_pos, 
+        last_review, 
+        front, 
+        back,
+        deck_name: path2string(&deck_name)
+      });
+    }
   }
-  Deck { cards, deck_name }
+  cards
 }

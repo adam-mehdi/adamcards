@@ -43,7 +43,7 @@
 		foldersMuted = false;
 	}
 
-	function focusOnMount(el) {
+	function focusOnMount(el: any) {
 		el.focus();
 	}
 

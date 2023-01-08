@@ -10,21 +10,81 @@
 		front: string,
 		back: string,
 		boxPos: number,
+		deckName: string;
 	}
-	const deckName = $page.params.deck;
-	let cards: Card[] = [];
-	async function getCards() {
-		cards = await invoke('read_deck', { deckName });
-	} 
-	getCards();
-
-	// 
-
-	// on exit, write to quotas and decks
-
 	
+	interface CenterPanel {
+		front: string,
+		back: string,
+		prompt: string,
+		selectedDeck: string,
+		multiCard: boolean
+	}
+
+	/*
+	 * Initialize state
+	 */
+
+	// init panel
+	let panel: CenterPanel = {
+		"front": '',
+		"back": '',
+		"prompt": '',
+		"selectedDeck": '',
+		"multiCard": false,
+	};
+
+	// name of folder or deck
+	const fsObjName = $page.params.slug;
+	
+	// load decks that are children of this folder
+	let cards: Card[] = [];
+	let deck_names: string[] = [];
+
+	async function getDecks() {
+		cards = await invoke('read_decks', { fsObjName });
+		deck_names = [... new Set(cards.map(a => a.deckName))];
+		panel.selectedDeck = deck_names[0];
+	} 
+	getDecks();
+
+	/*
+	 * Button functionality: creating cards, multi-card creation, filtering gallery
+	 */
+
+	async function createCard() {
+		// append to cards
+		let id: number = await invoke(
+			"calculate_hash", 
+			{"deckName": panel.selectedDeck, "front": panel.front, "back": panel.back }
+			);
+		let new_card: Card = { 
+			"id": id, 
+			"front": panel.front, 
+			"back": panel.back, 
+			"boxPos": 0, 
+			"deckName": panel.selectedDeck 
+		};
+
+		console.log(cards);
+		// TODO: crossfade animation
+		cards.push(new_card);
+		panel.front = '';
+		panel.back = '';
+	}
+
+	function toggleMultiCard() {
+
+	}
+	
+	const filterCards = () => {	
+		// return array of cards that match search term
+	}
 
 
+	/*
+	 * Animate cards: drag-and-drop and crossfade
+	 */
 
 	const dragDuration = 300
 	// let cards: number[] = Array(20).fill(1).map((_, i) => i + 1)
@@ -40,48 +100,39 @@
 		cards[cardAIndex] = card
 		cards[cardBIndex] = draggingCard!
 	}
-	let front = 'adam';
-	let back = '';
+
 	
-	let prompt = '';
-	
-	function createCard(event: any) {
-		// append to cards
-		// crossfade animation
-		// clear field
-        
-	}
-	
-	const filterCards = () => {	
-		// return array of cards that match search term
-	}
+
 	
 </script>
 <a href="/">Home</a>
 
 
-<div class="center_panel">
-	<div class="center_card">
+<div class="panel">
+	<!-- choose deck name; `selected_deck_name` by default -->
+	<select name="deck_menu" id="deck_menu">
+		{#each deck_names as deck_name}
+			<option value={deck_name}> {deck_name} </option>
+		{/each}
+	</select>
+
+	<!-- show center card field -->
+	<div class="panel_card">
 			<div class="front">
-				<textarea class="center_text" bind:value={front} />
+				<textarea class="panel_text" bind:value={panel.front} />
 			</div>
 			
 		<div class="back">
-				<textarea class="center_text" bind:value={back} />
+				<textarea class="panel_text" bind:value={panel.back} />
 		</div>
 		
 		
-		
-		<div class="center_bar">
-		<!-- 	if editing; specify deadline if creating -->
-			
-			
-			
+		<!-- sumbit card or change to multi-card -->
+		<div class="submit_bar">
 			<button on:click={createCard}> |-> </button>
-			<button on:click={createCard}> >> </button>
-			<br> <hr>
-			<Search bind:prompt on:input={filterCards} />
+			<button on:click={toggleMultiCard}> >> </button>
 		</div>
+		<Search bind:prompt={panel.prompt} on:input={filterCards} />
 			
 	</div>
 </div>
@@ -154,11 +205,11 @@
 	
 
 	/* add image support and submit bar at bottom	 */
-	.center_panel {
+	.panel {
 		height: 256px;
 	}
 	
-	.center_card {
+	.panel_card {
 		display: flex;
  		flex-direction:column;
 		padding: 8px;
@@ -171,7 +222,7 @@
 		
 	}
 	
-	.center_text {
+	.panel_text {
 		width: 312px; 
 		height: 86px; 
 		border-radius: 16px; 
@@ -179,11 +230,11 @@
 		font-size: 16px;
 	}
 	
-	.center_bar {
+	/* .panel_bar {
 		display: flex;
-		/* background-color:ivory; */
+		background-color:ivory;
 		height: 32px;
-	}
+	} */
 	
 	button {
 		height: 32px;
