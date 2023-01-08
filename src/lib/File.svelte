@@ -1,9 +1,9 @@
 <script lang="ts">
 	export let name: string;
-	$: type = name.slice(name.lastIndexOf('.') + 1);
+	$: file_type = name.slice(name.lastIndexOf('.') + 1);
 </script>
 
-<span style="background-image: url(/{type}.svg)">{name}</span>
+<span style="background-image: url(/{file_type}.svg)">{name}</span>
 
 <style>
 	span {
