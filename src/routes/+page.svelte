@@ -7,20 +7,17 @@
 	import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
 	import Folder from '$lib/Folder.svelte';
 
-
 	// load contents of ~/data/decks recursivey
 	type FileSystemObject = {
-		type: 'folder' | 'file',
-		name: string,
-		files?: FileSystemObject[]
-	}
+		type: 'folder' | 'file';
+		name: string;
+		files?: FileSystemObject[];
+	};
 	let root: FileSystemObject[] = [
 		{
 			type: 'folder',
 			name: 'Important work stuff',
-			files: [
-				{ type: 'file', name: 'quarterly-results.gif' }
-			]
+			files: [{ type: 'file', name: 'quarterly-results.gif' }]
 		},
 		{
 			type: 'folder',
@@ -34,7 +31,7 @@
 						{ type: 'file', name: 'rope-jumping.gif' }
 					]
 				},
-				{ type: 'file', name: 'cat-roomba.gif' },
+				{ type: 'file', name: 'cat-roomba.gif' }
 			]
 		},
 		{ type: 'file', name: 'TODO.md' }
@@ -43,13 +40,10 @@
 
 <h1>MIO</h1>
 
-
-<h2>Folder System Decks</h2>
-<Folder name="Home" files={root} expanded/>
-
-
-
-
+<h2>Decks</h2>
+<div class="folders">
+	<Folder name="My Decks" files={root} expanded />
+</div>
 
 <h2>My Decks</h2>
 <DeckList />
@@ -58,3 +52,10 @@
 <br />
 <hr />
 <a href="/demo">Svelte Examples</a>
+
+<style>
+	.folders {
+		width: 100vw;
+		max-width: 600px;
+	}
+</style>
