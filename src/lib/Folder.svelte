@@ -3,7 +3,6 @@
 	// import KaTeXRenderer from './KaTeXRenderer.svelte';
 	import settingsGear from '$lib/images/settings-gear-black.png';
 	import { clickOutside } from './actions/click_outside';
-
 	type FileSystemObject = {
 		type: 'folder' | 'file';
 		name: string;
@@ -12,7 +11,6 @@
 		deadlineDate?: string;
 		deadlineTime?: string;
 	};
-
 	export let expanded = false;
 	export let name: string = '';
 	export let type: 'folder' | 'file' = 'folder';
@@ -20,54 +18,44 @@
 	export let deadlineTime: string | null = null;
 	export let files: FileSystemObject[];
 	let foldersMuted: boolean = false;
-
 	function handleNewFolder() {
 		// add a new folder
 	}
-
 	function handleNewFile() {
 		//
 	}
-
 	function toggle() {
 		if (!foldersMuted) {
 			expanded = !expanded;
 		}
 	}
-
 	let settingsTrayOpen: boolean = false;
 	function toggleSettingsTray() {
 		settingsTrayOpen = !settingsTrayOpen;
 	}
-
 	let deadlineEditable: boolean = false;
 	let nameEditable: boolean = false;
 
-	// Write out click logic for the deadline string
 	function handleOutclick() {
 		nameEditable = false;
 		deadlineEditable = false;
 		foldersMuted = false;
 	}
-
-	function focusOnMount(el) {
+	function focusOnMount(el: any) {
 		el.focus();
 	}
-
 	function handleEditableDeadlineKeypress(e: KeyboardEvent) {
 		if (e.code === 'Enter') {
 			deadlineEditable = false;
 			foldersMuted = false;
 		}
 	}
-
 	function handleEditableNameKeypress(e: KeyboardEvent) {
 		if (e.code === 'Enter') {
 			nameEditable = false;
 			foldersMuted = false;
 		}
 	}
-
 	// Deadline Should Also Save on ENTER
 </script>
 
@@ -193,11 +181,9 @@
 		display: flex;
 		justify-content: space-between;
 	}
-
 	.folder-container {
 		position: relative;
 	}
-
 	.folder {
 		display: flex;
 		justify-content: space-between;
@@ -213,11 +199,9 @@
 		margin: 1px;
 		border-radius: 2px;
 	}
-
 	.folder:hover {
 		background-color: #eee;
 	}
-
 	.create-file-folder-row {
 		display: flex;
 		justify-content: space-between;
@@ -233,11 +217,9 @@
 		margin: 1px;
 		border-radius: 2px;
 	}
-
 	.create-file-folder-row:hover {
 		background-color: rgb(245, 245, 245);
 	}
-
 	.span-right {
 		display: flex;
 		justify-content: space-between;
@@ -246,32 +228,26 @@
 	.span-left {
 		width: 33%;
 	}
-
 	/* .expanded {
 		background-image: url(/folder-open.svg);
 	} */
-
 	ul {
 		padding: 0.2em 0 0 0.5em;
 		margin: 0 0 0 0.5em;
 		list-style: none;
 		border-left: 1px solid #eee;
 	}
-
 	li {
 		padding: 0.2em 0;
 	}
-
 	.gear {
 		height: 1em;
 		width: 1em;
 	}
-
 	.gear:hover {
 		height: 1.2em;
 		width: 1.2em;
 	}
-
 	.folder-settings-button {
 		height: 100%;
 		width: 2em;
@@ -282,7 +258,6 @@
 		background-color: transparent;
 		border-radius: 100px;
 	}
-
 	.settings-tray {
 		padding: 10px;
 		display: flex;
@@ -297,13 +272,11 @@
 		border-radius: 2px;
 		z-index: 4;
 	}
-
 	.settings-tray ul {
 		padding: 0;
 		margin: 0;
 		font-size: 0.8em;
 	}
-
 	.settings-tray li {
 		border: none;
 		padding: none;

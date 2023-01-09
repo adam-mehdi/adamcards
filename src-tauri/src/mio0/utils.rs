@@ -156,16 +156,12 @@ pub fn read_from_cfg<T: FromStr>(deck_name: &str, field_name: &str) -> Option<T>
 // }
 
 pub fn deadline_to_datetime(deadline_string: String) -> DateTime<FixedOffset> {
-    if deadline_string.chars().count() == 16 {
-        return local_to_fixed(
-            naive_deadline_to_datetime(deadline_string)
-        );
-    } else if deadline_string.chars().count() == 25 {
+    if deadline_string.chars().count() == 25 {
         return DateTime::parse_from_rfc3339(&deadline_string)
             .expect("failed to parse datetime in the rfc3339 format");
     } else {
         panic!(
-            "deadline string must have form YYYY-MM-DD-HH:MM or rfc3339 but got: {}", 
+            "deadline string must have form or rfc3339 but got: {}", 
             deadline_string);
     }
 }
