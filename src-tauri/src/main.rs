@@ -13,7 +13,10 @@ use std::sync::{
     };
 
 mod update;
-use update::read_decks;
+use update::{
+  read_decks,
+  write_decks,
+};
 
 mod utils;
 use utils::{
@@ -54,7 +57,8 @@ fn main() {
       get_next_card, 
       // post_review, 
       read_decks,
-      calculate_hash
+      calculate_hash,
+      write_decks,
       ])
     .run(tauri::generate_context!())
     

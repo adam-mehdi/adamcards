@@ -9,16 +9,23 @@
 		id: number,
 		front: string,
 		back: string,
-		boxPos: number,
-		deckName: string;
+		last_review: number;
+		box_pos: number,
+		deck_name: string;
 	}
 	
 	interface CenterPanel {
 		front: string,
 		back: string,
 		prompt: string,
-		selectedDeck: string,
-		multiCard: boolean
+		selected_deck: string,
+		multi_card: boolean
+	}
+
+	// all decks that are children of the provided file system entry
+	interface EntryChildren {
+		cards: Card[],
+		deck_names: string[]
 	}
 
 	/*
@@ -30,21 +37,22 @@
 		"front": '',
 		"back": '',
 		"prompt": '',
-		"selectedDeck": '',
-		"multiCard": false,
+		"selected_deck": '',
+		"multi_card": false,
 	};
 
 	// name of folder or deck
-	const fsObjName = $page.params.slug;
+	const entry = $page.params.entry;
 	
 	// load decks that are children of this folder
 	let cards: Card[] = [];
 	let deck_names: string[] = [];
 
 	async function getDecks() {
-		cards = await invoke('read_decks', { fsObjName });
-		deck_names = [... new Set(cards.map(a => a.deckName))];
-		panel.selectedDeck = deck_names[0];
+		let entityChildren: EntryChildren = await invoke('read_decks', { entry });
+		cards = entityChildren.cards;
+		deck_names = entityChildren.deck_names;
+		panel.selected_deck = deck_names[0];
 	} 
 	getDecks();
 
@@ -52,25 +60,45 @@
 	 * Button functionality: creating cards, multi-card creation, filtering gallery
 	 */
 
+	// number of cards created
+	let numCreated = 0;
+	// save cards; called on exit (press 'home') or every four cards
+	async function saveDecks() {
+		await invoke('write_decks', {  cards, numCreated });
+	}
+
 	async function createCard() {
+		// don't save if either field is empty
+		if (panel.front === '' || panel.back === '') {
+			return;
+		}
+
 		// append to cards
-		let id: number = await invoke(
+		const id: number = await invoke(
 			"calculate_hash", 
-			{"deckName": panel.selectedDeck, "front": panel.front, "back": panel.back }
+			{"deckName": panel.selected_deck, "front": panel.front, "back": panel.back }
 			);
-		let new_card: Card = { 
+		const new_card: Card = { 
 			"id": id, 
 			"front": panel.front, 
 			"back": panel.back, 
-			"boxPos": 0, 
-			"deckName": panel.selectedDeck 
+			"last_review": 0,
+			"box_pos": 0, 
+			"deck_name": panel.selected_deck 
 		};
 
 		console.log(cards);
-		// TODO: crossfade animation
-		cards.push(new_card);
+		// TODO: crossfade animation and prepend
+		cards.splice(0, 0, new_card);
+		cards = cards;
 		panel.front = '';
 		panel.back = '';
+
+		// save  all cards every fourth card made
+		if (numCreated % 4 == 0) {
+			saveDecks()
+		}
+		numCreated += 1;
 	}
 
 	function toggleMultiCard() {
@@ -102,10 +130,8 @@
 	}
 
 	
-
-	
 </script>
-<a href="/">Home</a>
+<a href="/" on:click={saveDecks}>Home</a>
 
 
 <div class="panel">
@@ -132,7 +158,9 @@
 			<button on:click={createCard}> |-> </button>
 			<button on:click={toggleMultiCard}> >> </button>
 		</div>
-		<Search bind:prompt={panel.prompt} on:input={filterCards} />
+		<div class="lookup_bar">
+			<Search bind:prompt={panel.prompt} on:input={filterCards} />
+		</div>
 			
 	</div>
 </div>
@@ -166,8 +194,8 @@
 	.container {
 		display: grid;
 /* format depends on size of window		 */
-		grid-template-rows: repeat(4, 1fr);
-		grid-template-columns: repeat(2, 1fr);
+		grid-template-rows: repeat(10, 1fr);
+		grid-template-columns: repeat(4, 1fr);
 		gap: 8px;
 	}
 
@@ -177,7 +205,6 @@
 		padding: 8px;
 		justify-content: center;
 		align-items: center;
-    color: darkblue;
 		
 		width: 100%;
 		height: 100%;
@@ -206,7 +233,7 @@
 
 	/* add image support and submit bar at bottom	 */
 	.panel {
-		height: 256px;
+		height: 364px;
 	}
 	
 	.panel_card {
@@ -230,15 +257,22 @@
 		font-size: 16px;
 	}
 	
-	/* .panel_bar {
-		display: flex;
-		background-color:ivory;
-		height: 32px;
-	} */
+	.lookup_bar {
+		height: 8px;
+	}
 	
 	button {
 		height: 32px;
 		font-size: 12px;
+	}
+
+	#deck_menu {
+		display: flex;
+ 		flex-direction:column;
+		justify-content: center;
+		align-items: center;
+
+
 	}
 	
 </style>
