@@ -16,6 +16,7 @@ mod update;
 use update::{
   read_decks,
   write_decks,
+  parse_textfield,
 };
 
 mod utils;
@@ -59,6 +60,7 @@ fn main() {
       read_decks,
       calculate_hash,
       write_decks,
+      parse_textfield,
       ])
     .run(tauri::generate_context!())
     
