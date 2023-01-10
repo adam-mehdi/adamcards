@@ -24,7 +24,6 @@ use std::{
       prelude::*
     },
     fs::OpenOptions,
-    iter::zip
 };
 // use chrono::Local;
 // use priority_queue::PriorityQueue as PQ;
@@ -34,8 +33,8 @@ use std::{
 
 use crate::utils::{
     AppDataDirState,
-    read_from_config,
-    get_days_to_go,
+    get_days_to_go, 
+    read_num_boxes,
 };
 // card with info about frontend
 #[derive(Serialize, Deserialize, Debug)]
@@ -46,6 +45,7 @@ pub struct Card {
   front: String,
   back: String,
   deck_name: String,
+  is_created: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -118,7 +118,8 @@ pub fn read_decks(state: State<AppDataDirState>, entry: String) -> EntryChildren
         last_review, 
         front,
         back,
-        deck_name: deck_name.to_string()
+        deck_name: deck_name.to_string(),
+        is_created: false
       });
     }
   }
@@ -126,30 +127,30 @@ pub fn read_decks(state: State<AppDataDirState>, entry: String) -> EntryChildren
 }
 
 #[tauri::command] 
-pub fn write_decks(state: State<AppDataDirState>, cards: Vec<Card>, num_created: i32) {
-  eprintln!("NOT IMPLEMENTED. RETURNING");
-  return;
-  // let root = get_root_path(state);
-
+pub fn write_decks(state: State<AppDataDirState>, cards: Vec<Card>) {
+  // need num_created for each deck!!
+  let root = get_root_path(state);
 
   // Restructuring: Vec<Card> to {deck_name: card}
-  // let mut deck_map: HashMap<String, Vec<Card>> = HashMap::new();
-  // cards.into_iter().for_each(|card| {
-  //   let deck = deck_map.entry(card.deck_name.to_string()).or_insert(vec![]);
-  //   deck.push(card);
-  // });
+  let mut deck_map: HashMap<String, Vec<Card>> = HashMap::new();
+  cards.into_iter().for_each(|card| {
+    let deck = deck_map.entry(card.deck_name.to_string()).or_insert(vec![]);
+    deck.push(card);
+  });
 
-  // for (deck_name, deck_cards) in deck_map {
-  //   let deck_path = root.join(deck_name);
-  //   write_cards_to_deck(&deck_path, deck_cards);
-  //   update_quotas(&deck_path, num_created)
 
-    // LEFT OFF HERE
-
-  // }
+  for (deck_name, deck_cards) in deck_map {
+    let num_created = deck_cards.iter()
+      .fold(0, |acc, x| acc + (x.is_created as i32));
+    let deck_path = root.join(deck_name);
+    write_cards_to_deck(&deck_path, deck_cards);
+    update_quotas(&deck_path, num_created);
+  }
 }
 
-// writes cards in `deck_cards` into `cards.csv` file in the `deck_path` dir
+/**
+ * Writes cards in `deck_cards` into `cards.csv` file in the `deck_path` dir
+ */
 fn write_cards_to_deck(deck_path: &PathBuf, deck_cards: Vec<Card>) {
 
   let deck_path = deck_path.join("cards.csv");
@@ -174,52 +175,56 @@ fn write_cards_to_deck(deck_path: &PathBuf, deck_cards: Vec<Card>) {
 
 // computes quotas given `num_cards`, `num_boxes`, and `deck.days_to_go`, and 
 // adds them to the nq and rq files on the quotas file
-// fn update_quotas(deck_path: &PathBuf, num_cards: i32) {
-//     // get boxes from deck path config
-//     let num_boxes = read_from_config(&deck_path, "num_boxes")
-//       .unwrap_or_else(|| {eprintln!("COMPUTING DEFUALT NUM_BOXES"); 4});
+fn update_quotas(deck_path: &PathBuf, num_cards: i32) {
+    // no quotas to update if no new cards
+    if num_cards == 0 {
+      return;
+    }
+
+    // get boxes from deck path config
+    let num_boxes = read_num_boxes(&deck_path)
+      .expect("failed to read num_boxes from config");
     
-//     let days_to_go = get_days_to_go(&deck_path);
+    // get days to go using deadline from config
+    let days_to_go = get_days_to_go(&deck_path);
 
+    // get existing quotas
+    let quotas_path = deck_path.join("quotas.csv");
+    assert!(quotas_path.is_file());
+    let mut quotas = read_quotas_file(&quotas_path);
 
-//     let quotas_path = deck_path.join("quotas.csv");
-//     assert!(quotas_path.is_file());
+    // compute new quotas, with new and existing quotas both min sorted by dtg (nq, rq)
+    let mut new_quotas = compute_quotas(num_cards, days_to_go, num_boxes);    
+
+    // update quotas if there are existing quotas
+    if quotas.len() != 0 {
+      assert!(quotas.len() >= new_quotas.len(), "days to go cannot increase");
+
+      for i in 0..new_quotas.len() {
+          // update new quotas then review quotas
+          new_quotas[i].nq += quotas[i].nq;
+          new_quotas[i].rq += quotas[i].rq;
+      }
+
+      redistribute_quotas(&mut new_quotas);
+
+      for i in 0..quotas.len() {
+          // update new quotas then review quotas
+          quotas[i].nq = new_quotas[i].nq;
+          quotas[i].rq = new_quotas[i].rq;
+      }
+    } else {
+      quotas = new_quotas;
+    }
     
-
-    
-    
-
-//     // get quotas for the new cards being put into the deck (nq, rq)
-//     let mut new_quotas = compute_quotas(num_cards, days_to_go, num_boxes);    
-//     // make index i correspond to days_to_go = i
-//     new_quotas.reverse();
+    // save new quotas
+    write_quotas_file(&quotas, &quotas_path)
 
 
-//     // form: [[dtg, nq, rq, nqp, rqp], ...]
-//     let mut quotas = read_quotas_file(&quotas_path);
-
-//     assert!(quotas.len() >= new_quotas.len(), "days to go must decrease");
-
-//     for i in 0..new_quotas.len() {
-//         // update new quotas then review quotas
-//         new_quotas[i].0 += quotas[i][1];
-//         new_quotas[i].1 += quotas[i][2];
-//     }
-
-//     redistribute_quotas(&mut new_quotas);
-
-//     for i in 0..quotas.len() {
-//         // update new quotas then review quotas
-//         quotas[i][1] = new_quotas[i].0;
-//         quotas[i][2] = new_quotas[i].1;
-//     }
-    
-//     write_quotas_file(&quotas, &quotas_path)
+}
 
 
-// }
-
-
+#[derive(Debug)]
 pub struct QuotasRecord {
   dtg: i32, // days_to_go
   nq: i32,  // new_quota
@@ -229,25 +234,34 @@ pub struct QuotasRecord {
 }
 
 
-// returns lines of quotas in vector form [[dtg, nq, rq, nqp, rqp], ...]
-pub fn read_quotas_file(quotas_path: &PathBuf) -> Vec<Vec<i32>> {
+// returns records of quotas, sorted with ascending dtg 
+pub fn read_quotas_file(quotas_path: &PathBuf) -> Vec<QuotasRecord> {
 
     let reader = OpenOptions::new().read(true).open(quotas_path).unwrap();
     let reader = BufReader::new(reader);
 
-    let mut quotas: Vec<Vec<i32>> = Vec::new();
+    let mut quotas: Vec<QuotasRecord> = Vec::new();
     for line in reader.lines().skip(1) {
         let line = line.expect("failed to read line");
-        let msg = "quotas file is improperly formatted. must be csv.";
+        let mut line_it = line.split(',')
+          .map(|x| x.parse::<i32>()
+          .expect("quotas file is improperly formatted. must be csv."));
+     
         quotas.push(
-            line.split(',').map(|x| x.parse::<i32>().expect(msg)).collect()
-        );
+          QuotasRecord {
+            dtg: line_it.next().expect("failed to read quotas csv"),
+            nq: line_it.next().expect("failed to read quotas csv"),
+            rq: line_it.next().expect("failed to read quotas csv"),
+            nqp: line_it.next().expect("failed to read quotas csv"),
+            rqp: line_it.next().expect("failed to read quotas csv"),
+        });
+     
     }
     quotas
 }
 
 // write [[dtg, nq, rq, nqp, rqp], ...] to ./decks/quotas/deckname.csv
-pub fn write_quotas_file(quotas: &Vec<Vec<i32>>, quotas_path: &PathBuf) {
+pub fn write_quotas_file(quotas: &Vec<QuotasRecord>, quotas_path: &PathBuf) {
   // compute (nq, rq) doubles for each day
   let buf = OpenOptions::new().write(true).open(quotas_path)
       .expect("failed to create quota file");
@@ -259,11 +273,11 @@ pub fn write_quotas_file(quotas: &Vec<Vec<i32>>, quotas_path: &PathBuf) {
   for d in 0..quotas.len() {
       buf.write_fmt(format_args!(
           "{},{},{},{},{}\n",
-           quotas[d][0], 
-           quotas[d][1], 
-           quotas[d][2], 
-           quotas[d][3], 
-           quotas[d][4]
+           quotas[d].dtg, 
+           quotas[d].nq, 
+           quotas[d].rq, 
+           quotas[d].nqp, 
+           quotas[d].rqp
           )
       ).expect("failed to write");
   }
@@ -271,30 +285,31 @@ pub fn write_quotas_file(quotas: &Vec<Vec<i32>>, quotas_path: &PathBuf) {
 
 // computes quotas for `num_cards` given `days_to_go` and `num_boxes`
 pub fn compute_quotas(num_cards: i32, days_to_go: i32, num_boxes: i32) -> Vec<QuotasRecord> {
+    assert!(num_cards > 0);
 
     let n = num_cards;          // number of cards                                                           
     let t = days_to_go;         // days until deadline                                          
     let b = num_boxes;          // number of boxes
-                                                                                   
+                                                                                
     let sum: i32 = (0..t).sum();
-    
+ 
     // compute new card quota vector
     let mut nq: Vec<i32> = (0..t).rev().map(|x| x * n / sum).collect();
-    let nq_sum = n;
+    let nq_sum = nq.iter().sum::<i32>();
 
     // enforce sum of NQ equals number of cards by adding remainder
     if let Some(first) = nq.get_mut(0) {
-        *first += n % nq_sum;
+        *first += n - nq_sum;
     }
-                                                                                   
-    
+                                                                                
+ 
     // compute review card quota vector
     let mut rq: Vec<i32> = (0..t).map(|x| x * n * (b - 2) / sum).collect();                             
-    let rq_sum = n * (b - 2);
+    let rq_sum = rq.iter().sum::<i32>();
 
     // enforce sum of RQ equals number of cards times number of bins minus 2
     if let Some(last) = rq.last_mut() {
-        *last += (n * (b - 2)) % rq_sum;
+        *last += (n * (b - 2)) - rq_sum;
     }
     // user reviews all cards the day of exam
     nq.push(0);
@@ -305,60 +320,33 @@ pub fn compute_quotas(num_cards: i32, days_to_go: i32, num_boxes: i32) -> Vec<Qu
       let dtg = (nq.len() - 1 - i) as i32; // days to go
       quotas.push(QuotasRecord { dtg, nq: nq[i], rq: rq[i], nqp: 0, rqp: 0 });
     }
+
+    // min sort by dtg: make index i correspond to days_to_go = i
+    quotas.sort_by(|a, b| a.dtg.cmp(&b.dtg));
+    assert!(quotas[0].dtg == 0);
+    assert!(quotas.iter().fold(0, |acc, x| acc + x.nq) == n);
+    assert!(quotas.iter().fold(0, |acc, x| acc + x.rq) == n * (b - 1));
+
     quotas
 }
 
 
-pub fn get_num_boxes(days_to_go: i64) -> i32 {
-  let t = days_to_go as i32;
-  // bins generated by recursive equation x_n = x_{n-1} + 2^n + 1 
-  // applied 5 times to (2, 6)
-let bins = vec![
-      (0, 1), (2, 6), (7, 15), (16, 32), (33, 65), (66, 130), (131, 259)];
-let mut i = 0;
-  let mut found_bin = false;
-for (a, b) in bins {
-  if a <= t && t <= b {
-          found_bin = true;
-    break;
-  }
-  i += 1;
-}
-  assert!(found_bin, "deadline must be between 0 and 259 days in the future");
-let num_boxes = 2 + i;
-num_boxes
-}
-
-fn reverse_order<T: Copy>(coll: &mut Vec<T>) {
-  let mut j = coll.len() - 1;
-  let mut i = 0;
-  while i <= j {
-      let temp = coll[i];
-      coll[i] = coll[j];
-      coll[j] = temp;
-
-      j -= 1;
-      i += 1;
-  }
-}
 
 // redistributes quotas, based on assuming new reviews are twice as expensive
 // quotas has form (nq, rq); i days to go can correspond either to index
 // quotas.len() - 1 - i or index i
-pub fn redistribute_quotas(quotas: &mut Vec<(i32, i32)>){
-  let reversed = quotas[0].0 != 0;
-  if reversed {
-      reverse_order(quotas);
-  }
+pub fn redistribute_quotas(quotas: &mut Vec<QuotasRecord>){
+
+  assert!(quotas[0].dtg == 0);
+  assert!(quotas[0].nq == 0, "day 0 is allotted a new card");
 
   //  a quantification of effort, score S := 2NQ + RQ
   let score_tot: i32 = compute_study_cost(&quotas).iter().sum();
   let score_avg = score_tot / quotas.len() as i32;
 
   // don't want to modify index 0, so temporarily give it avg score
-  assert!(quotas[0].0 == 0, "day 0 is allotted a new card");
-  let n_cards = quotas[0].1;
-  quotas[0].1 = score_avg;
+  let n_cards = quotas[0].rq;
+  quotas[0].rq = score_avg;
 
   loop {
       let scores: Vec<i32> = compute_study_cost(&quotas);
@@ -372,41 +360,37 @@ pub fn redistribute_quotas(quotas: &mut Vec<(i32, i32)>){
           if scores[i] - score_avg >= 4 {
               // give one NQ away to the min
               let min_idx = argmin(&scores);
-              if quotas[i].0 > 0 {
-                  quotas[i].0 -= 1;
-                  quotas[min_idx].0 += 1;
+              if quotas[i].nq > 0 {
+                  quotas[i].nq -= 1;
+                  quotas[min_idx].nq += 1;
               }
 
               // give one RQ away to the min twice
               let scores = compute_study_cost(&quotas);
               let min_idx = argmin(&scores);
-              if quotas[i].1 > 0 {
-                  quotas[i].1 -= 1;
-                  quotas[min_idx].1 += 1;
+              if quotas[i].rq > 0 {
+                  quotas[i].rq -= 1;
+                  quotas[min_idx].rq += 1;
               }
 
               let scores = compute_study_cost(&quotas);
               let min_idx = argmin(&scores);
-              if quotas[i].1 > 0 {
-                  quotas[i].1 -= 1;
-                  quotas[min_idx].1 += 1;
+              if quotas[i].rq > 0 {
+                  quotas[i].rq -= 1;
+                  quotas[min_idx].rq += 1;
               }
           }
       }
   }
 
   // reset index 0
-  quotas[0].1 = n_cards;
-
-  if reversed {
-      reverse_order(quotas);
-  }
+  quotas[0].rq = n_cards;
 }
 
-fn compute_study_cost(quotas: &Vec<(i32, i32)>) -> Vec<i32> {
+fn compute_study_cost(quotas: &Vec<QuotasRecord>) -> Vec<i32> {
     let scores: Vec<i32> = quotas
         .iter()
-        .map(|x| 2*x.0 + x.1) //"new cards are twice as hard as review cards"
+        .map(|x| 2*x.nq + x.rq) //"new cards are twice as hard as review cards"
         .collect();
     scores
 }
@@ -417,3 +401,39 @@ fn argmin(collection: &Vec<i32>) -> usize {
         .expect("failed to find argmin");
     argmin
 } 
+
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FieldPair {
+  front: String,
+  back: String,
+}
+
+#[tauri::command] 
+pub fn parse_textfield(textfield: String) -> Vec<FieldPair> {
+  let mut cards: Vec<FieldPair> = Vec::new();
+
+  for line in textfield.lines() {
+    // ensure this line contains a valid card
+    if line.matches(">>").count() != 1 {
+        continue;
+    }
+    let mut field_it = line.split(">>");
+
+    let front = process_field(field_it.next().unwrap());
+    let back = process_field(field_it.next().unwrap());
+    cards.push(FieldPair { front, back });
+  }
+
+  cards
+}
+
+fn process_field(field: &str) -> String {
+    let mut field = field.trim();
+    let ch = field.chars().next().unwrap();
+    if ch == '-' || ch == '*' {
+      field =  field.strip_prefix(ch).unwrap().trim();
+    }
+    field.to_string()
+}
