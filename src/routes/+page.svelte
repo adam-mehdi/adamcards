@@ -1,4 +1,16 @@
 <script lang="ts">
+	import Decks from '$lib/Decks.svelte';
+</script>
+
+<div class="page-container">
+	<div class="content-container">
+		<div class="deck-list-container">
+			<Decks />
+		</div>
+	</div>
+</div>
+
+<!-- <script lang="ts">
 	import DeckList from '$lib/illustrations/DeckList.svelte';
 	import Folder from '$lib/Folder.svelte';
 	import { exclude_internal_props } from 'svelte/internal';
@@ -53,6 +65,12 @@
 	let deck_name = 'test';
 </script>
 
+<script>
+	import Decks from '$lib/Decks.svelte';
+
+	// Nothing for now
+</script>
+
 <h1>MIO</h1>
 
 <h2>Decks</h2>
@@ -62,13 +80,33 @@
 
 <h2>Test deck</h2>
 <a href="/{deck_name}/edit"><button>Edit/Create</button></a>
-<br>
+<br />
 <a href="/{deck_name}/review"><button>Review</button></a>
-
 
 <style>
 	.folders {
 		width: 100vw;
 		max-width: 600px;
+	}
+</style>
+
+ -->
+<style>
+	.page-container {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		justify-content: center;
+		align-items: center;
+		overflow: hidden;
+		/* background-color: gray; */
+	}
+
+	.content-container {
+		width: 95%;
+		max-width: 600px;
+		height: 60%;
+		/* background-color: green; */
+		padding: 0;
 	}
 </style>
