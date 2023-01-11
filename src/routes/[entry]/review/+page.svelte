@@ -6,11 +6,13 @@
 	// import { crossfade } from 'svelte/tyes/runtime/transition';
 
 	
-	interface FrontendCard {
+	interface Card {
 		id: number,
+		box_pos: number,
+		last_review: string | null,
 		front: string,
 		back: string,
-		deck_name: string
+		deck_name: string,
 	}
 
 	interface Quotas {
@@ -20,7 +22,7 @@
 	}
 
 	interface SessionState {
-		card: FrontendCard | null,
+		card: Card | null,
 		quotas: Quotas | null,
 		is_revealed: boolean,    // back field is revealed
 		is_finished: boolean,   // review session is completed
@@ -35,12 +37,12 @@
 
 	async function initBoxes() {
 		let entry = $page.params.entry;
-		await invoke('init_boxes', { entry });
+		await invoke('init_leitner_systems', { entry });
 
 	}
 	initBoxes();
 	
-	type DrawnItems = { card: FrontendCard, quotas: Quotas};
+	type DrawnItems = { card: Card, quotas: Quotas};
 	async function drawCard() {
 		// draw card from a backend deck
 		const items: DrawnItems = await invoke('draw_card');
@@ -58,7 +60,6 @@
 	async function handleResponse(response: number) {
 		await invoke("handle_response", {
 			"card": state.card, 
-			"quotas": state.quotas, 
 			"response": response
 		});
 	}
@@ -67,10 +68,6 @@
 	async function cleanup() {
 		await invoke('cleanup');
 		state.is_finished = true;
-	}
-
-	function revealBack() {
-		state.is_revealed = true;
 	}
 
 	const onKeyDown = (e: KeyboardEvent) => {

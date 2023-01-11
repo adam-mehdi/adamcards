@@ -42,9 +42,9 @@ pub fn run_session(deck_name: String) {
     // new_left and review_left are the amount of cards left to review 
     // (distinct from quotas, which are amount total to review)
     let (mut new_left, mut review_left) = get_quotas(&deck);
+    let (new_quota, review_quota) = (new_left, review_left);
     let num_boxes = read_from_cfg::<i32>(&deck_name, "num_boxes")
         .expect("'num_boxes' not in config");
-    let (new_quota, review_quota) = (new_left, review_left);
     
     let mut review_num = 0;
     let mut is_cleaned = false;

@@ -7,10 +7,12 @@ use tauri::{
   Manager, 
   State
 };
-use std::sync::{
-      Mutex, 
-      Arc
-    };
+use std::{
+  sync::{
+    Mutex, 
+    Arc
+  }
+};
 
 mod update;
 use update::{
@@ -21,11 +23,18 @@ use update::{
 
 mod utils;
 use utils::{
-  ReviewSessionState,
-  // LeitnerBoxSystem,
   AppDataDirState,
   calculate_hash
   // DeckEntry,
+};
+
+mod review;
+use review::{
+  ReviewSessionState,
+  init_review_session,
+  draw_card,
+  handle_response,
+  cleanup 
 };
 
 /*
@@ -34,7 +43,10 @@ use utils::{
 fn main() {
 
   let review_session_state = ReviewSessionState {
-    cards_arc: Arc::new(Mutex::new(None)),
+    systems: Arc::new(Mutex::new(Vec::new())),
+    quotas: Arc::new(Mutex::new(Vec::new())),
+    deck_paths: Arc::new(Mutex::new(Vec::new())),
+    // deck_names: Arc::new(Mutex::new(None))
   };
 
 
@@ -56,11 +68,14 @@ fn main() {
     // illustrative purposes only and will be removed in the future.
     .invoke_handler(tauri::generate_handler![
       get_next_card, 
-      // post_review, 
       read_decks,
       calculate_hash,
       write_decks,
       parse_textfield,
+      init_review_session,
+      draw_card,
+      handle_response,
+      cleanup,
       ])
     .run(tauri::generate_context!())
     

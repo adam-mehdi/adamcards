@@ -11,19 +11,14 @@ use serde::{
     Deserialize
 };
 
-use std::fs::{
-  read_dir,
-  File,
-};
 use std::{ 
     collections::HashMap,
     path::PathBuf, 
     io::{
       BufReader,
-      BufWriter,
       prelude::*
     },
-    fs::OpenOptions,
+    fs::{ OpenOptions, File },
 };
 // use chrono::Local;
 // use priority_queue::PriorityQueue as PQ;
@@ -35,10 +30,18 @@ use crate::utils::{
     AppDataDirState,
     get_days_to_go, 
     read_num_boxes,
+    get_root_path,
+    get_child_decks,
+    QuotasRecord,
+    read_quotas_file,
+    write_quotas_file,
+    redistribute_quotas
 };
+
+
 // card with info about frontend
 #[derive(Serialize, Deserialize, Debug)]
-pub struct Card {
+pub struct EditCard {
   id: usize,
   box_pos: usize,
   last_review: String,
@@ -50,39 +53,23 @@ pub struct Card {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct EntryChildren {
-  cards: Vec<Card>,
+  cards: Vec<EditCard>,
   deck_names: Vec<String>
 }
 
-// pub fn read_decks(state: State<AppDataDirState>, fs_name: String) -> Vec<Deck> {
-// fs_name is the name of either a deck or folder
-// }
 
-// get immutable path to app data
-fn get_root_path(data_dir: State<AppDataDirState>) -> PathBuf {
-  // entry refers to the name of either a deck or a directory
-  data_dir.path.as_ref().unwrap().join("decks")
+
+
+fn path2name(deck_path: &PathBuf, root: &PathBuf) -> String {
+  deck_path.strip_prefix(&root).unwrap()
+      .to_str().unwrap().to_owned()
 }
-
-// returns vector of deck directory paths if they are children of `entry`
-fn get_child_decks(root: &PathBuf, entry: &str) -> Vec<PathBuf> {
-  read_dir(root).expect("wrong root to appdata")
-    .filter_map(Result::ok)
-    .filter(|f| f.path().is_dir() && f.file_name().into_string().unwrap().starts_with(entry))
-    .map(|x| x.path())
-    .collect::<Vec<PathBuf>>()
-}
-
-// pub fn path2string(path: &PathBuf) -> String {
-//   path.clone().into_os_string().into_string().unwrap()
-// }
-
 
 #[tauri::command] 
 pub fn read_decks(state: State<AppDataDirState>, entry: String) -> EntryChildren {
   let root = get_root_path(state);
   let deck_paths = get_child_decks(&root, &entry);
-  let mut cards: Vec<Card> = Vec::new();
+  let mut cards: Vec<EditCard> = Vec::new();
 
 
   let mut deck_names = Vec::new();
@@ -92,8 +79,7 @@ pub fn read_decks(state: State<AppDataDirState>, entry: String) -> EntryChildren
       panic!("cards file not in decks folder. problem: create cards on home
         Will create deck dir skeleton later");
     }
-    let deck_name = deck_path.strip_prefix(&root).unwrap()
-      .to_str().unwrap().to_owned();
+    let deck_name = path2name(&deck_path, &root);
     if !deck_names.contains(&deck_name) {
       deck_names.push(deck_name.to_string());
     }
@@ -112,7 +98,7 @@ pub fn read_decks(state: State<AppDataDirState>, entry: String) -> EntryChildren
       let back = field_it.next().unwrap().to_owned();
 
 
-      cards.push( Card {
+      cards.push( EditCard {
         id, 
         box_pos, 
         last_review, 
@@ -127,12 +113,12 @@ pub fn read_decks(state: State<AppDataDirState>, entry: String) -> EntryChildren
 }
 
 #[tauri::command] 
-pub fn write_decks(state: State<AppDataDirState>, cards: Vec<Card>) {
+pub fn write_decks(state: State<AppDataDirState>, cards: Vec<EditCard>) {
   // need num_created for each deck!!
   let root = get_root_path(state);
 
-  // Restructuring: Vec<Card> to {deck_name: card}
-  let mut deck_map: HashMap<String, Vec<Card>> = HashMap::new();
+  // Restructuring: Vec<EditCard> to {deck_name: card}
+  let mut deck_map: HashMap<String, Vec<EditCard>> = HashMap::new();
   cards.into_iter().for_each(|card| {
     let deck = deck_map.entry(card.deck_name.to_string()).or_insert(vec![]);
     deck.push(card);
@@ -151,12 +137,12 @@ pub fn write_decks(state: State<AppDataDirState>, cards: Vec<Card>) {
 /**
  * Writes cards in `deck_cards` into `cards.csv` file in the `deck_path` dir
  */
-fn write_cards_to_deck(deck_path: &PathBuf, deck_cards: Vec<Card>) {
+fn write_cards_to_deck(deck_path: &PathBuf, deck_cards: Vec<EditCard>) {
 
   let deck_path = deck_path.join("cards.csv");
   let mut file = OpenOptions::new().write(true).open(deck_path).unwrap();
   let mut contents = 
-        "CardId >> BoxPosition >> LastReviewTime >> Front >> Back\n".to_string();
+        "CardId >> BoxPosition >> LastReview >> Front >> Back\n".to_string();
   
   for card in deck_cards {
     contents.push_str(
@@ -224,64 +210,8 @@ fn update_quotas(deck_path: &PathBuf, num_cards: i32) {
 }
 
 
-#[derive(Debug)]
-pub struct QuotasRecord {
-  dtg: i32, // days_to_go
-  nq: i32,  // new_quota
-  rq: i32,  // review_quota
-  nqp: i32, // new_quota_practiced
-  rqp: i32  // review_quota_practiced
-}
 
 
-// returns records of quotas, sorted with ascending dtg 
-pub fn read_quotas_file(quotas_path: &PathBuf) -> Vec<QuotasRecord> {
-
-    let reader = OpenOptions::new().read(true).open(quotas_path).unwrap();
-    let reader = BufReader::new(reader);
-
-    let mut quotas: Vec<QuotasRecord> = Vec::new();
-    for line in reader.lines().skip(1) {
-        let line = line.expect("failed to read line");
-        let mut line_it = line.split(',')
-          .map(|x| x.parse::<i32>()
-          .expect("quotas file is improperly formatted. must be csv."));
-     
-        quotas.push(
-          QuotasRecord {
-            dtg: line_it.next().expect("failed to read quotas csv"),
-            nq: line_it.next().expect("failed to read quotas csv"),
-            rq: line_it.next().expect("failed to read quotas csv"),
-            nqp: line_it.next().expect("failed to read quotas csv"),
-            rqp: line_it.next().expect("failed to read quotas csv"),
-        });
-     
-    }
-    quotas
-}
-
-// write [[dtg, nq, rq, nqp, rqp], ...] to ./decks/quotas/deckname.csv
-pub fn write_quotas_file(quotas: &Vec<QuotasRecord>, quotas_path: &PathBuf) {
-  // compute (nq, rq) doubles for each day
-  let buf = OpenOptions::new().write(true).open(quotas_path)
-      .expect("failed to create quota file");
-  let mut buf = BufWriter::new(buf);
-
-  let header = "DaysToGo,NewQuota,ReviewQuota,NewPracticed,ReviewPracticed\n";
-  buf.write_all(header.as_bytes()).expect("Unable to write data");
-
-  for d in 0..quotas.len() {
-      buf.write_fmt(format_args!(
-          "{},{},{},{},{}\n",
-           quotas[d].dtg, 
-           quotas[d].nq, 
-           quotas[d].rq, 
-           quotas[d].nqp, 
-           quotas[d].rqp
-          )
-      ).expect("failed to write");
-  }
-}
 
 // computes quotas for `num_cards` given `days_to_go` and `num_boxes`
 pub fn compute_quotas(num_cards: i32, days_to_go: i32, num_boxes: i32) -> Vec<QuotasRecord> {
@@ -332,75 +262,6 @@ pub fn compute_quotas(num_cards: i32, days_to_go: i32, num_boxes: i32) -> Vec<Qu
 
 
 
-// redistributes quotas, based on assuming new reviews are twice as expensive
-// quotas has form (nq, rq); i days to go can correspond either to index
-// quotas.len() - 1 - i or index i
-pub fn redistribute_quotas(quotas: &mut Vec<QuotasRecord>){
-
-  assert!(quotas[0].dtg == 0);
-  assert!(quotas[0].nq == 0, "day 0 is allotted a new card");
-
-  //  a quantification of effort, score S := 2NQ + RQ
-  let score_tot: i32 = compute_study_cost(&quotas).iter().sum();
-  let score_avg = score_tot / quotas.len() as i32;
-
-  // don't want to modify index 0, so temporarily give it avg score
-  let n_cards = quotas[0].rq;
-  quotas[0].rq = score_avg;
-
-  loop {
-      let scores: Vec<i32> = compute_study_cost(&quotas);
-      if !scores.iter().any(|&x| x - score_avg >= 4) {
-          break;
-      }
-
-      // if any days have a score greater than 3
-      for i in (0..quotas.len()).rev() {
-          let scores: Vec<i32> = compute_study_cost(&quotas);
-          if scores[i] - score_avg >= 4 {
-              // give one NQ away to the min
-              let min_idx = argmin(&scores);
-              if quotas[i].nq > 0 {
-                  quotas[i].nq -= 1;
-                  quotas[min_idx].nq += 1;
-              }
-
-              // give one RQ away to the min twice
-              let scores = compute_study_cost(&quotas);
-              let min_idx = argmin(&scores);
-              if quotas[i].rq > 0 {
-                  quotas[i].rq -= 1;
-                  quotas[min_idx].rq += 1;
-              }
-
-              let scores = compute_study_cost(&quotas);
-              let min_idx = argmin(&scores);
-              if quotas[i].rq > 0 {
-                  quotas[i].rq -= 1;
-                  quotas[min_idx].rq += 1;
-              }
-          }
-      }
-  }
-
-  // reset index 0
-  quotas[0].rq = n_cards;
-}
-
-fn compute_study_cost(quotas: &Vec<QuotasRecord>) -> Vec<i32> {
-    let scores: Vec<i32> = quotas
-        .iter()
-        .map(|x| 2*x.nq + x.rq) //"new cards are twice as hard as review cards"
-        .collect();
-    scores
-}
-
-fn argmin(collection: &Vec<i32>) -> usize {
-    let min = collection.iter().min().unwrap();
-    let argmin = collection.iter().position(|x| x == min)
-        .expect("failed to find argmin");
-    argmin
-} 
 
 
 
