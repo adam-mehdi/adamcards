@@ -1,8 +1,11 @@
 <script lang="ts">
 	import type { DeckInfo } from '$lib/types/DecksTypes';
 	import CogButton from '$lib/CogButton.svelte';
+	import { goto } from '$app/navigation';
 
 	export let deck: DeckInfo;
+	export let handleOwnDelete: () => Promise<boolean> | null;
+
 	let deckMenuOpen = false;
 
 	$: {
@@ -10,6 +13,32 @@
 			alert('DECK MENU OPEN!');
 		}
 	}
+
+	async function handleCogRoute(route: string) {
+		try {
+			// TODO: make the route the route for this deck
+			await goto(route);
+			return true;
+		} catch {
+			return false;
+		}
+	}
+
+	async function handleEditDeadline() {
+		// TODO
+	}
+
+	async function handleEditName() {
+		// TODO
+	}
+
+	let cogMenuOptions = [
+		{ name: 'Review', action: async () => await handleCogRoute('/') },
+		{ name: 'Edit Deck', action: async () => await handleCogRoute('/') },
+		{ name: 'Edit Name', action: handleEditName },
+		{ name: 'Edit Deadline', action: handleEditDeadline },
+		{ name: 'Delete Deck', action: async () => await handleOwnDelete() }
+	];
 </script>
 
 <div class="deck" on:click={() => alert('AHHH')} on:keypress={() => alert('AHHH')}>
@@ -17,9 +46,9 @@
 		{deck.name}
 	</span>
 	<span class="right">
-		<em>{deck.deadline.toLocaleString('en-US')}</em>
+		<em>{deck.deadline ? deck.deadline.toLocaleString('en-US') : 'no deadline'}</em>
 
-		<CogButton bind:open={deckMenuOpen} />
+		<CogButton options={cogMenuOptions} />
 	</span>
 </div>
 

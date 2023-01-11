@@ -1,12 +1,14 @@
 <script lang="ts">
-	import Decks from '$lib/Decks.svelte';
+	import DeckList from '$lib/DeckList.svelte';
+	// import Decks from '$lib/Decks.svelte';
 </script>
 
 <div class="page-container">
 	<div class="content-container">
-		<div class="deck-list-container">
-			<Decks />
-		</div>
+		<!-- <div class="deck-list-container"> -->
+		<!-- <Decks /> -->
+		<DeckList />
+		<!-- </div> -->
 	</div>
 </div>
 
@@ -108,5 +110,8 @@
 		height: 60%;
 		/* background-color: green; */
 		padding: 0;
+		/* display: flex;
+		flex-direction: column;
+		justify-content: space-between; */
 	}
 </style>

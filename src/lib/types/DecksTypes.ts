@@ -1,12 +1,12 @@
 export interface DeckInfo {
-	id: number;
+	id: string;
 	type: 'deck';
 	name: string;
-	deadline: Date;
+	deadline: Date | null;
 }
 
 export interface DeckFolderInfo {
-	id: number;
+	id: string;
 	type: 'folder';
 	name: string;
 	contents: (DeckInfo | DeckFolderInfo)[] | null;
