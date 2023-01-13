@@ -1,4 +1,14 @@
-body,
-html {
+body {
 	font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+	margin: none;
+	padding: none;
+	height: inherit;
+	width: inherit;
+}
+
+html {
+	height: 98vh;
+	width: inherit;
+	margin: none;
+	padding: none;
 }

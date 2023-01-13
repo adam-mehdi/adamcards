@@ -35,11 +35,7 @@
 	}
 	let deadlineEditable: boolean = false;
 	let nameEditable: boolean = false;
-	// function handleDeadlineClick() {
-	// 	deadlineEditable = true;
-	// 	foldersMuted = true;
-	// }
-	// Write out click logic for the deadline string
+
 	function handleOutclick() {
 		nameEditable = false;
 		deadlineEditable = false;
