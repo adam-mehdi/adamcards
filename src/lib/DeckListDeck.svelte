@@ -55,7 +55,7 @@
 	}
 
 	let cogMenuOptions: gearMenuOption[] = [
-		{ name: 'Edit Deck', action: async () => await handleCogRoute('/') }, // route to review
+		{ name: 'Edit Deck', action: async () => await handleCogRoute(`/edit/${deckName}`) }, // route to review
 		{ name: 'Edit Name', action: handleEditName },
 		{ name: 'Edit Deadline', action: handleEditDeadline },
 		{ name: 'Delete Deck', action: async () => await handleDeleteDeck(deckName) }
@@ -140,7 +140,7 @@
 			<em>{`${deckDeadlineDate} ${deckDeadlineTime}`}</em>
 		{/if}
 
-		<button>Review</button>
+		<a href="/"><button>Review</button></a>
 		<CogButton options={cogMenuOptions} />
 	</span>
 </div>
