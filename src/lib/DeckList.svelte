@@ -23,6 +23,8 @@
 
 	let deckEntries: FileEntry[];
 
+	let createDeckShown = false;
+
 	onMount(async () => {
 		await readDeckEntries();
 	});
@@ -112,7 +114,7 @@
 
 	let formDeckName = '';
 	let formDeckDeadlineDate = '';
-	let formDeckDeadlineTime = '';
+	let formDeckDeadlineTime = '14:30';
 
 	function handleNewDeckSubmit(
 		newDeckName: string,
@@ -121,7 +123,7 @@
 	) {
 		// check that deck name is well formatted
 		// construct rfc3339 string
-		let rfc3339String = `${newDeckDeadlineDate}T${newDeckDeadlineTime}Z`;
+		let rfc3339String = `${newDeckDeadlineDate}T${newDeckDeadlineTime}:00+00:00`;
 		writeNewDeck(newDeckName, rfc3339String).then((re) => {
 			if (re == 'created') {
 				formDeckName = '';
@@ -193,11 +195,7 @@
 
 	const handleUpdate = async () => {
 		await getDecksInfo(deckEntries);
-		// console.log('EACH DECK NAME');
-		// decks.forEach((deck) => console.log(deck.deckName));
 	};
-
-	// $: console.log(`REACTIVE: ${decks}`);
 
 	$: {
 		if (deckEntries) {
@@ -206,22 +204,16 @@
 	}
 </script>
 
-<h3>Create New Deck</h3>
-<form
-	on:submit|preventDefault={() =>
-		handleNewDeckSubmit(formDeckName, formDeckDeadlineDate, formDeckDeadlineTime)}
->
-	<input type="text" bind:value={formDeckName} required />
-	<input type="date" bind:value={formDeckDeadlineDate} required />
-	<input type="time" bind:value={formDeckDeadlineTime} required />
-
-	<button type="submit">Create Deck</button>
-</form>
-
-<hr />
 <h3>Decks</h3>
 {#if decks.length != 0}
-	{#each decks as deck, i}
+	{#each decks as deck, i (deck.deckName.toLowerCase())}
+		{#if deck.deckName.split('~~').length > 1}
+			{#each deck.deckName.split('~~').slice(0, -1) as folder, j}
+				{#if i < 1 || decks[i].deckName.split('~~')[j] != decks[i - 1].deckName.split('~~')[j]}
+					<div style:margin-left={`${j + 1}em`}><strong>{folder}</strong></div>
+				{/if}
+			{/each}
+		{/if}
 		<DeckListDeck
 			bind:deckName={deck.deckName}
 			bind:deckDeadlineDate={deck.deckDeadlineDate}
@@ -232,3 +224,43 @@
 {:else}
 	<p><em>No Decks</em></p>
 {/if}
+
+{#if createDeckShown}
+	<div class="create-deck-form-area">
+		<form
+			on:submit|preventDefault={() =>
+				handleNewDeckSubmit(formDeckName, formDeckDeadlineDate, formDeckDeadlineTime)}
+		>
+			<input type="text" bind:value={formDeckName} required autofocus />
+			<input type="date" bind:value={formDeckDeadlineDate} required />
+			<input type="time" bind:value={formDeckDeadlineTime} required />
+
+			<button type="submit">Create Deck</button>
+			<button
+				on:click={() => {
+					createDeckShown = !createDeckShown;
+				}}>Cancel</button
+			>
+		</form>
+	</div>
+{:else}
+	<button
+		class="show-create-deck"
+		on:click={() => {
+			createDeckShown = !createDeckShown;
+		}}>+</button
+	>
+{/if}
+
+<style>
+	.show-create-deck {
+		margin-top: 3em;
+		width: 100%;
+	}
+	.create-deck-form-area {
+		margin-top: 3em;
+		width: 100%;
+		display: flex;
+		justify-content: center;
+	}
+</style>

@@ -55,8 +55,7 @@
 	}
 
 	let cogMenuOptions: gearMenuOption[] = [
-		// { name: 'Review', action: async () => await handleCogRoute('/') },
-		// { name: 'Edit Deck', action: async () => await handleCogRoute('/') },
+		{ name: 'Edit Deck', action: async () => await handleCogRoute('/') }, // route to review
 		{ name: 'Edit Name', action: handleEditName },
 		{ name: 'Edit Deadline', action: handleEditDeadline },
 		{ name: 'Delete Deck', action: async () => await handleDeleteDeck(deckName) }
@@ -81,8 +80,10 @@
 	}
 
 	let oldName = deckName;
+	let formName = deckName;
 	function handleNameFormSubmit() {
 		// TODO
+		deckName = formName;
 		let pathToOldName = DECKS_DIR + sep + oldName;
 		pathToOldName.replace(/ \//g, '\n');
 		let pathToNewName = DECKS_DIR + sep + deckName;
@@ -118,14 +119,14 @@
 	}
 </script>
 
-<div class="deck">
+<div class="deck" style:margin-left={`${deckName.split('~~').length}em`}>
 	<span class="left">
 		{#if deckNameEditable}
 			<form on:submit={handleNameFormSubmit}>
-				<input type="text" bind:value={deckName} autofocus />
+				<input type="text" bind:value={formName} autofocus />
 			</form>
 		{:else}
-			{deckName}
+			{deckName.split('~~').pop()}
 		{/if}
 	</span>
 	<span class="right">
@@ -139,6 +140,7 @@
 			<em>{`${deckDeadlineDate} ${deckDeadlineTime}`}</em>
 		{/if}
 
+		<button>Review</button>
 		<CogButton options={cogMenuOptions} />
 	</span>
 </div>
@@ -149,6 +151,7 @@
 		width: full;
 		display: flex;
 		justify-content: space-between;
+		margin-bottom: 0.5em;
 	}
 	.left {
 		/* background-color: blue; */
