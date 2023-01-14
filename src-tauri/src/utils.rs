@@ -64,14 +64,15 @@ struct DeckEntry {
  }
 
 pub fn deadline_to_datetime(deadline_string: String) -> DateTime<FixedOffset> {
-    if deadline_string.chars().count() == 25 {
+    // if deadline_string.chars().count() == 25 {
+        println!("Deadline String: {}", deadline_string);
         return DateTime::parse_from_rfc3339(&deadline_string)
             .expect("failed to parse datetime in the rfc3339 format");
-    } else {
-        panic!(
-            "deadline string must have form or rfc3339 but got: {}", 
-            deadline_string);
-    }
+    // } else {
+        // panic!(
+            // "deadline string must have form or rfc3339 but got: {}", 
+            // deadline_string);
+    // }
 }
 
 pub fn days_until_datetime(datetime: DateTime<FixedOffset>) -> i64 {

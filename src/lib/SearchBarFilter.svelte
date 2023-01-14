@@ -2,23 +2,21 @@
 	export let prompt: string;
 </script>
 
-
 <div id="search-input-cont">
-	<input type="text" 
-	 id="search-field" 
-	 placeholder="filter" 
-	 autocomplete="off"
-	 bind:value={prompt}
-	 on:input />
-</div> 
-
+	<input
+		type="text"
+		id="search-field"
+		placeholder="filter"
+		autocomplete="off"
+		bind:value={prompt}
+		on:input
+	/>
+</div>
 
 <style>
 	#search-input-cont {
-		width: 40%;
 		display: flex;
 		align-items: center;
-		margin: 0 0 0 10px;
 	}
 
 	#search-field {
@@ -30,5 +28,4 @@
 		padding: 8px;
 		margin: 0 10px 0;
 	}
-
 </style>

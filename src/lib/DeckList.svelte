@@ -97,7 +97,7 @@
 			// create the config.toml
 
 			let num_boxes = getNumBoxes(deadline);
-			let configString = `num_boxes = ${num_boxes}\ndeadline = "${deadline}"`;
+			let configString = `num_boxes = ${num_boxes}\ndeadline = ${deadline}`;
 
 			await writeTextFile(deckPath + '/config.toml', configString, {
 				dir: BaseDirectory.AppData
@@ -123,7 +123,8 @@
 	) {
 		// check that deck name is well formatted
 		// construct rfc3339 string
-		let rfc3339String = `${newDeckDeadlineDate}T${newDeckDeadlineTime}:00+00:00`;
+		let rfc3339String = `${newDeckDeadlineDate}T${newDeckDeadlineTime}:00-05:00`;
+		console.log(`RFC3339: ${rfc3339String}`);
 		writeNewDeck(newDeckName, rfc3339String).then((re) => {
 			if (re == 'created') {
 				formDeckName = '';
@@ -135,6 +136,7 @@
 				alert(`Unknown error in writeNewDeck`);
 			}
 		});
+		formDeckDeadlineTime = '14:30';
 	}
 
 	interface DeckInfo {

@@ -55,7 +55,7 @@
 	}
 
 	let cogMenuOptions: gearMenuOption[] = [
-		{ name: 'Edit Deck', action: async () => await handleCogRoute(`/edit/${deckName}`) }, // route to review
+		{ name: 'Edit Deck', action: async () => await handleCogRoute(`/${deckName}/edit`) }, // route to review
 		{ name: 'Edit Name', action: handleEditName },
 		{ name: 'Edit Deadline', action: handleEditDeadline },
 		{ name: 'Delete Deck', action: async () => await handleDeleteDeck(deckName) }
@@ -105,11 +105,13 @@
 		const configPath = DECKS_DIR + sep + deckName + sep + 'config.toml';
 		configPath.replace(/ \//g, '\n');
 
-		let rfc3339String = `${deckDeadlineDate}T${deckDeadlineTime}Z`;
+		let rfc3339String = `${deckDeadlineDate}T${deckDeadlineTime}-05:00`;
+
+		console.log(`Created with rfc3339 string: ${rfc3339String}`);
 
 		let num_boxes = getNumBoxes(rfc3339String);
 
-		let configString = `num_boxes = ${num_boxes}\ndeadline = "${rfc3339String}"`;
+		let configString = `num_boxes = ${num_boxes}\ndeadline = ${rfc3339String}`;
 
 		await writeTextFile(configPath, configString, {
 			dir: BaseDirectory.AppData
@@ -140,7 +142,7 @@
 			<em>{`${deckDeadlineDate} ${deckDeadlineTime}`}</em>
 		{/if}
 
-		<a href="/"><button>Review</button></a>
+		<a href={`/${deckName}/review`}><button>Review</button></a>
 		<CogButton options={cogMenuOptions} />
 	</span>
 </div>

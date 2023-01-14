@@ -4,9 +4,11 @@ body {
 	padding: none;
 	height: inherit;
 	width: inherit;
+	background-color: #f9fafc;
 }
 
 html {
+	background-color: #f9fafc;
 	height: 98vh;
 	width: inherit;
 	margin: none;
