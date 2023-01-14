@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/stores';
 	// import KaTeXRenderer from '$lib/KaTeXRenderer.svelte';
-	// import { invoke } from '@tauri-apps/api/tauri';
+	import { invoke } from '@tauri-apps/api/tauri';
 	import { quintOut } from 'svelte/easing';                                      
     import { crossfade } from 'svelte/transition';                                 
     import { flip } from 'svelte/animate';                                         
@@ -91,11 +91,14 @@
 		session_is_finished: boolean,   // review session is completed
 		is_started: boolean, 			// false if session has not started yet
 		// id2idx
-		buf: CardBuffer
+		buf: CardBuffer,
+		// quotas_M_before: SummedQuotas
 	}
 
 
 
+	// write buf_size - min_history every time
+	// const MIN_HISTORY;
     const BUF_SIZE = 2;
 	const MOVE_DURATION = 50;
 	
@@ -104,7 +107,7 @@
 	let state: SessionState;
 	async function initState() {
 		// let entry = $page.params.entry;
-		// let quotas = await invoke('init_review_session', { "entryName": entry });
+		// let quotas: SummedQuotas = await invoke('init_review_session', { "entryName": entry });
 
 		const quotas: SummedQuotas = {
 			new_left: 1,
@@ -217,7 +220,8 @@
 
 		// compute box_pos_delta
 		let box_pos_delta = response - 2;
-		if (box_pos_delta == -1 && box_pos == 0)
+		if (box_pos_delta == -1 && box_pos <= 1)
+			// no moving from review to new nor from new to negative
 			box_pos_delta = 0;
 
 		// move card box position
@@ -227,15 +231,8 @@
 		// find the stack where the card ends up
 		if (box_pos_delta == 1) {
 			buf_card.stack_after = "done";
-		} else if (box_pos_delta == 0) {
-			buf_card.stack_after = buf_card.stack_before;
 		} else {
-			// move from box 1 to box 0
-			if (box_pos == 1) {
-				buf_card.stack_after = "new";
-			} else {
-				buf_card.stack_after = buf_card.stack_before;
-			}
+			buf_card.stack_after = buf_card.stack_before;
 		}
 
 		// put the card in that stack
