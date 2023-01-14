@@ -38,12 +38,12 @@
 
 		// if the decks directory has been created
 		if (decksDirExists) {
-			console.log('deck dir exists');
+			// console.log('deck dir exists');
 			// try to read it's contents
 			try {
 				deckEntries = await readDir(DECKS_DIR, { dir: BaseDirectory.AppData });
-				console.log('ENTRIES FROM 44');
-				console.log(deckEntries);
+				// console.log('ENTRIES FROM 44');
+				// console.log(deckEntries);
 				return;
 				// processEntries(deckEntries);
 				// console.log('decks:');
@@ -158,7 +158,7 @@
 				}
 				// console.log(config);
 			} catch (err) {
-				console.error(`ERROR PARSING TOML: ${err}`);
+				// console.error(`ERROR PARSING TOML: ${err}`);
 			}
 
 			return { date: '', time: '' };

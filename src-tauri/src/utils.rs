@@ -10,7 +10,7 @@ use std::{
     collections::hash_map::DefaultHasher,
     hash::{ Hash, Hasher },
     // fmt::Debug,
-    fs::{ OpenOptions, read_dir }
+    fs::{ OpenOptions, read_dir },
 };
 use serde::{
     Serialize, 
@@ -18,6 +18,7 @@ use serde::{
 };
 use chrono::{ 
   DateTime,
+//   Duration,
   prelude::*,
 };
 
@@ -62,38 +63,79 @@ pub struct AppDataDirState{
     let deadline = read_deadline(&deck_path)
       .expect("deadline not found in config");
     
-    let datetime = deadline_to_datetime(&deadline);
-    let days_to_go = days_until_datetime(datetime) as i32;
+    let datetime = string_to_datetime(&deadline);
+    let days_to_go = days_until_datetime_naive(datetime) as i32;
     days_to_go 
  }
 
-pub fn deadline_to_datetime(deadline_string: &str) -> DateTime<FixedOffset> {
+/**
+ * converts string in rfc3339 format to datetime
+ */
+pub fn string_to_datetime(string: &str) -> DateTime<FixedOffset> {
 
-    if deadline_string.chars().count() == 25 {
-        return DateTime::parse_from_rfc3339(deadline_string)
+    if string.chars().count() == 25 {
+        return DateTime::parse_from_rfc3339(string)
             .expect("failed to parse datetime in the rfc3339 format");
     } else {
         panic!(
-            "deadline string must have form or rfc3339 but got: {}", 
-            deadline_string);
+            "string must have form or rfc3339 but got: {}", 
+            string);
     }
 }
 
-pub fn days_until_datetime(datetime: DateTime<FixedOffset>) -> i64 {
+// pub fn days_until_datetime(datetime: DateTime<FixedOffset>) -> i64 {
+//     // mark of new day: 2am
+//     // mark that deadline day is day 0: dl >= 2pm
+
+//     let mut days_until = 0;
+//     // get time at 2am ahead of now
+//     let now = Local::now();
+//     let h = now.hour();
+//     let h_until_2am;
+//     if h < 2 {
+//         h_until_2am = 2 - h;
+//     } else {
+//         h_until_2am = 26 - h;
+//     }
+//     let thresh_ts = now.checked_add_signed(
+//         Duration::seconds(h_until_2am as i64 * 60 * 60 )).unwrap();
+//     // count time between now and next 2am
+//     days_until += 1;
+
+//     // 0 days to go if next 2am is after deadline
+//     if thresh_ts.timestamp() > datetime.timestamp() {
+//         return 0;
+//     }
+    
+//     days_until += datetime.signed_duration_since(datetime).num_days();
+
+//     // do not consider deadline day if the deadline is before 2pm
+//     let dt_h = datetime.hour();
+//     if dt_h < 14 {
+//         days_until -= 1;
+//     }
+//     days_until
+// }
+
+pub fn days_until_datetime_naive(datetime: DateTime<FixedOffset>) -> i64 {
     datetime.signed_duration_since(Local::now()).num_days()
 }
 
-// pub fn seconds_until_datetime(datetime: DateTime<FixedOffset>) -> i64 {
-//     datetime.signed_duration_since(Local::now()).num_seconds()
-// }
 
- // id of a card is hash of its deck name, front, and back fields concatenated
+
+/**
+ * id of a card is hash of its deck name, front, and back fields concatenated,
+ * plus the epoch time stamp of its creation in milliseconds.
+ * 
+ * The only purpose of this scheme is to derive a unique card id for each card
+ * such that no ids collide
+ */
 #[tauri::command] 
 pub fn calculate_hash(deck_name: String, front: String, back: String) -> u64 {
     let t = deck_name + &front + &back;
     let mut s = DefaultHasher::new();
     t.hash(&mut s);
-    s.finish()
+    s.finish() + Local::now().timestamp_millis() as u64
 }
 
 
@@ -103,6 +145,16 @@ pub fn calculate_hash(deck_name: String, front: String, back: String) -> u64 {
 /*
  * fs helpers 
  */
+
+ // finds the index of `deck_name` in `deck_state`, None if not found
+ pub fn get_deck_idx(deck_name: &String, deck_state: &Vec<PathBuf>) -> Option<usize> {
+    for i in 0..deck_state.len() {
+        if deck_state[i].ends_with(deck_name) {
+            return Some(i);
+        }
+    }
+    None
+}
 
 #[allow(dead_code)]
 pub fn path2string(path: &PathBuf) -> String {
@@ -229,6 +281,7 @@ pub fn read_quotas_file(quotas_path: &PathBuf) -> Vec<QuotasRecord> {
     let mut quotas: Vec<QuotasRecord> = Vec::new();
     for line in reader.lines().skip(1) {
         let line = line.expect("failed to read line");
+
         let mut line_it = line.split(',')
           .map(|x| x.parse::<i32>()
           .expect("quotas file is improperly formatted. must be csv."));
@@ -249,7 +302,10 @@ pub fn read_quotas_file(quotas_path: &PathBuf) -> Vec<QuotasRecord> {
 // write [[dtg, nq, rq, nqp, rqp], ...] to ./decks/quotas/deckname.csv
 pub fn write_quotas_file(quotas: &Vec<QuotasRecord>, quotas_path: &PathBuf) {
   // compute (nq, rq) doubles for each day
-  let buf = OpenOptions::new().write(true).open(quotas_path)
+  let buf = OpenOptions::new()
+      .write(true)
+      .truncate(true)
+      .open(quotas_path)
       .expect("failed to create quota file");
   let mut buf = BufWriter::new(buf);
 

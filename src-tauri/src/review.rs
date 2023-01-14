@@ -1,5 +1,6 @@
 
 use tauri;
+use tauri::State;
 
 use std::{
     sync::{
@@ -11,7 +12,7 @@ use std::{
     cmp::Reverse,
     path::PathBuf,
     fs::{File, OpenOptions},
-    io::{BufReader, BufRead, Write},
+    io::{BufReader, BufRead, BufWriter, Write},
 };
 
 use serde::{
@@ -27,12 +28,13 @@ use crate::utils::{
     get_root_path,
     get_child_decks, 
     read_num_boxes,
-    deadline_to_datetime, 
+    string_to_datetime, 
     read_quotas_file,
     write_quotas_file, 
     get_days_to_go,
     redistribute_quotas, 
     path2fname, 
+    get_deck_idx
 };
 use chrono::Local;
 
@@ -40,7 +42,7 @@ use chrono::Local;
  * Structs
  */
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct Quotas {
     new_left: i32,
     review_left: i32,
@@ -63,6 +65,7 @@ pub struct DrawnItems {
 
 
 // leitner box of a deck (deck name is attribute of each card)
+#[derive(Debug)]
 pub struct LeitnerBoxSystem {
     lboxes: Vec<PQ<Card, Reverse<i64>>>,
     new_ids: Vec<usize>
@@ -104,6 +107,101 @@ pub fn init_review_session(state: tauri::State<ReviewSessionState>,
 
 }
 
+
+
+fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
+
+    // entry of deck_paths corresponds to entry in quotas_set
+    let mut records_set= Vec::new();
+    // days to go until deadline for each deck
+    let mut dtg: Vec<usize> = Vec::new();
+    for deck_path in deck_paths {
+        // update quotas file to account for missed days
+        handle_missed_days(&deck_path); 
+
+        // read quotas file
+        let quotas_path = deck_path.join("quotas.csv");
+        records_set.push(read_quotas_file(&quotas_path));
+
+        // read days to go
+        dtg.push(get_days_to_go(&deck_path) as usize);
+    }
+
+    // extract today's quotas for each deck
+    let mut quotas_set: Vec<Quotas> = Vec::new();
+    for (deck_idx, records) in records_set.iter().enumerate() {
+
+        let (new_left, review_left, num_progressed);
+        let deck_name = path2fname(&deck_paths[deck_idx]);
+
+        if records.len() == 0 {
+            // quotas are zero if deck is empty
+            new_left = 0; 
+            review_left = 0; 
+            num_progressed = 0;
+        } else {
+            // derive amount to review from quotas
+            let records = &records[dtg[deck_idx]];
+            new_left = records.nq - records.nqp;
+            review_left = records.rq - records.rqp;
+            num_progressed = records.nqp + records.rqp;
+        }
+        
+        quotas_set.push(Quotas {
+            new_left,
+            review_left,
+            num_progressed,
+            deck_name 
+        });
+    }
+    quotas_set
+
+}
+
+
+// count days in past where quota is not fulfilled, add unfilfilled progressions
+// to today's quota, and redistribute quotas to even out study cost over days
+fn handle_missed_days(deck_path: &PathBuf) {
+    let quotas_path = deck_path.join("quotas.csv");
+    let mut quotas = read_quotas_file(&quotas_path);
+    let curr_idx = get_days_to_go(deck_path) as usize;
+
+    // return if no previous days
+    if curr_idx + 1 == quotas.len() {
+        return;
+    }
+
+    let (mut nq_missed, mut rq_missed) = (0, 0);
+    for i in (curr_idx + 1)..quotas.len() {
+        // count up number of progressions missed in the past
+        nq_missed += quotas[i].nq - quotas[i].nqp;
+        rq_missed += quotas[i].rq - quotas[i].rqp;
+
+        // set past quota to the amount that was practiced
+        quotas[i].nq = quotas[i].nqp;
+        quotas[i].rq = quotas[i].rqp;
+    }
+
+    // return if no missed days
+    if nq_missed == 0 && rq_missed == 0 {
+        return;
+    }
+
+
+    // add missed cards to current day
+    quotas[curr_idx].nq += nq_missed;
+    quotas[curr_idx].rq += rq_missed;
+
+    // redistribute quotas to even out amount of studying over days
+    // let mut new_quotas = records2quotas(&quotas, curr_idx);
+    let new_quotas= &mut quotas[0..=curr_idx];
+    redistribute_quotas(new_quotas);
+
+    // write redistributed quotas to file system
+    write_quotas_file(&quotas, &quotas_path);
+}
+
+
 fn init_leitner_systems(deck_paths: &Vec<PathBuf>, quotas: &Vec<Quotas>) -> Vec<LeitnerBoxSystem> {
     let mut systems = Vec::new();
     for i in 0..deck_paths.len() {
@@ -115,8 +213,8 @@ fn init_leitner_systems(deck_paths: &Vec<PathBuf>, quotas: &Vec<Quotas>) -> Vec<
 }
 
 fn init_leitner_system(deck_path: &PathBuf, quotas: &Quotas) -> LeitnerBoxSystem {
-    let config_path = deck_path.join("config.toml");
-    let num_boxes = read_num_boxes(&config_path)
+    
+    let num_boxes = read_num_boxes(&deck_path)
         .expect("failed to read num_boxes from config"); 
 
     // Instantiate the Vector of Priority Queues
@@ -145,7 +243,6 @@ fn init_leitner_system(deck_path: &PathBuf, quotas: &Quotas) -> LeitnerBoxSystem
         let front = field_it.next().unwrap().to_owned();
         let back = field_it.next().unwrap().to_owned();
         let deck_name = path2fname(deck_path);
-        dbg!("is this a deck name? {}", &deck_name);
 
         // Push card to appropriate lbox
         lboxes[box_pos].push(
@@ -175,96 +272,18 @@ fn init_leitner_system(deck_path: &PathBuf, quotas: &Quotas) -> LeitnerBoxSystem
     LeitnerBoxSystem { lboxes, new_ids}
 }
 
-
-
 // returns queue score (epoch time in seconds plus or minus 15 minutes)
 fn get_queue_score(last_review: &str) -> i64 {
     let dt: i64;
     if last_review == "None" {
         dt = 0;
     } else {
-        dt = deadline_to_datetime(last_review).timestamp();
+        dt = string_to_datetime(last_review).timestamp();
     }
     let mut range = rand::thread_rng();
     let noise = range.gen_range(-900..900); // +-15 min in secs
     let queue_score = dt + noise;
     queue_score
-}
-
-
-fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
-
-    // entry of deck_paths corresponds to entry in quotas_set
-    let mut records_set= Vec::new();
-    // days to go until deadline for each deck
-    let mut dtg: Vec<usize> = Vec::new();
-    for deck_path in deck_paths {
-        // update quotas file to account for missed days
-        handle_missed_days(&deck_path); 
-
-        // read quotas file
-        let quotas_path = deck_path.join("quotas.csv");
-        records_set.push(read_quotas_file(&quotas_path));
-
-        // read days to go
-        dtg.push(get_days_to_go(&deck_path) as usize);
-    }
-
-    // extract today's quotas for each deck
-    let mut quotas_set: Vec<Quotas> = Vec::new();
-    for (deck_idx, records) in records_set.iter().enumerate() {
-        let records = &records[dtg[deck_idx]];
-        quotas_set.push(Quotas {
-            new_left: records.nq - records.nqp,
-            review_left: records.rq - records.rqp,
-            num_progressed: records.nqp + records.rqp,
-            deck_name: path2fname(&deck_paths[deck_idx])
-        });
-    }
-    quotas_set
-
-}
-
-
-// count days in past where quota is not fulfilled, add unfilfilled progressions
-// to today's quota, and redistribute quotas to even out study cost over days
-fn handle_missed_days(deck_path: &PathBuf) {
-    let quotas_path = deck_path.join("quotas.csv");
-    let mut quotas = read_quotas_file(&quotas_path);
-    let curr_idx = get_days_to_go(deck_path) as usize;
-
-    // return if no previous days
-    if curr_idx == quotas.len()-1 {
-        return;
-    }
-
-    let (mut nq_missed, mut rq_missed) = (0, 0);
-    for i in (curr_idx-1)..quotas.len() {
-        // count up number of progressions missed in the past
-        nq_missed += quotas[i].nq - quotas[i].nqp;
-        rq_missed += quotas[i].rq - quotas[i].rqp;
-
-        // set past quota to the amount that was practiced
-        quotas[i].nq = quotas[i].nqp;
-        quotas[i].rq = quotas[i].rqp;
-    }
-
-    // return if no missed days
-    if nq_missed == 0 && rq_missed == 0 {
-        return;
-    }
-
-    // add missed cards to current day
-    quotas[curr_idx].nq += nq_missed;
-    quotas[curr_idx].rq += rq_missed;
-
-    // redistribute quotas to even out amount of studying over days
-    // let mut new_quotas = records2quotas(&quotas, curr_idx);
-    let new_quotas= &mut quotas[0..=curr_idx];
-    redistribute_quotas(new_quotas);
-
-    // write redistributed quotas to file system
-    write_quotas_file(&quotas, &quotas_path);
 }
 
 
@@ -324,6 +343,7 @@ pub fn draw_card(state: tauri::State<ReviewSessionState>) -> DrawnItems {
     let card =  if is_new { 
         pop_new_card(leitner_system)
     } else {
+        // Warning: never reaches last day with +1 on get_days_to_go_naive
         let is_last_day = get_days_to_go(&deck_state[deck_idx]) == 0;
         pop_review_card(leitner_system, is_last_day)
     };
@@ -350,7 +370,7 @@ fn is_drawing_new(quotas_state: &Vec<Quotas>) -> Option<bool> {
         return None;
     }
 
-    let is_new = (in_new_interval && new_exists) || review_exists;
+    let is_new = (in_new_interval && new_exists) || !review_exists;
     Some(is_new)
 
 }
@@ -436,18 +456,9 @@ fn get_day_range(num_boxes: usize, is_last_day: bool) -> Rev<Range<usize>> {
 
  // ===== Handling user response =====
 
- // finds the index of `deck_name` in `deck_state`, None if not found
- fn get_deck_idx(deck_name: &String, deck_state: &Vec<PathBuf>) -> Option<usize> {
-    for i in 0..deck_state.len() {
-        if deck_state[i].ends_with(deck_name) {
-            return Some(i);
-        }
-    }
-    None
-}
-
 #[tauri::command] 
-pub fn handle_response(state: tauri::State<ReviewSessionState>, mut card: Card, response: i32) {
+pub fn handle_response(state: State<ReviewSessionState>, mut card: Card, response: i32) {
+
     let systems_state= &mut *state.systems.lock().unwrap();
     let quotas_state = &mut *state.quotas.lock().unwrap();
     let deck_state = & *state.deck_paths.lock().unwrap();
@@ -472,15 +483,21 @@ pub fn handle_response(state: tauri::State<ReviewSessionState>, mut card: Card, 
 
 }
 
+
+// put card back into proper stack
 fn update_quotas_on_response(score: i32, quotas: &mut Quotas, card: &Card) {
     // pregress if correct on new card
-    if card.box_pos == 0 && score == 1{
-        quotas.new_left += score;
-        quotas.num_progressed += score;
-    } 
+    // score == 1 ==> one to progressed and one 
+    if card.box_pos == 0 {
+        if score == 1 {
+            quotas.num_progressed += score;
+        } else {
+            quotas.new_left += 1;
+        }
+    }
     // progress or retract on review card
     else if card.box_pos > 0 {
-        quotas.review_left += score;
+        quotas.review_left -= score;
         quotas.num_progressed += score;
     }
 }
@@ -498,7 +515,9 @@ fn update_pos_on_response(score: i32, box_pos: &mut usize, num_boxes: usize) {
 
 fn update_last_review(last_review: &mut String) {
     // update last review to YYYY-MM-DDThh:mm:ss+ZZ:ZZ format
-    *last_review = Local::now().to_rfc3339();
+    *last_review = Local::now()
+    // SecondsFormat records just seconds instead of the default microseconds
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
 }
 
 
@@ -538,27 +557,26 @@ fn cleanup_decks(systems_state: &mut Vec<LeitnerBoxSystem>, deck_state: &Vec<Pat
         let deck_path = deck_state[deck_idx].join("cards.csv");
 
         // write cards into csv
-        let mut file = OpenOptions::new().write(true).open(deck_path)
+        let file = OpenOptions::new().truncate(true).write(true).open(deck_path)
             .expect("failed to open path to deck when saving");
-        let mut contents = 
-            "CardId >> BoxPosition >> LastReview >> Front >> Back\n".to_string();
+        let mut file = BufWriter::new(file);
+
+
+        let header = b"CardId >> BoxPosition >> LastReview >> Front >> Back\n";
+        file.write_all(header).expect("Failed to write deck data");
         let lboxes = &mut systems_state[deck_idx].lboxes;
 
         for box_idx in 0..lboxes.len() {
             while !lboxes[box_idx].is_empty() {
                 if let Some((card, _)) = &mut lboxes[box_idx].pop() {
-                    contents.push_str(
-                        &format!( 
+                    file.write_fmt(format_args!( 
                             "{} >> {} >> {} >> {} >> {}\n", 
                             card.id, card.box_pos, card.last_review, &card.front, &card.back
                         )
-                    );
+                    ).expect("Failed to write deck data");
                 }
             }
         }
-
-        file.write_all(contents.as_bytes())
-            .expect("failed to write deck upon cleaning up");
 
     }
 

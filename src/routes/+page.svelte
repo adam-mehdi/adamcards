@@ -12,6 +12,9 @@
 	</div>
 </div>
 
+<a href='/test/edit'>Edit</a>
+<a href='/test/review'>Review</a>
+
 <!-- <script lang="ts">
 	import DeckList from '$lib/illustrations/DeckList.svelte';
 	import Folder from '$lib/Folder.svelte';

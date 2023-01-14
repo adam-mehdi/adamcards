@@ -4,17 +4,7 @@
 	import { page } from '$app/stores';
 	import { invoke } from '@tauri-apps/api/tauri';
 
-	// load cards from deck
-	interface Card {
-		id: number,
-		front: string,
-		back: string,
-		last_review: string,
-		box_pos: number,
-		deck_name: string,
-		is_created: boolean,
-	}
-	
+	// contains state for the central panel on which cards are created
 	interface CenterPanel {
 		front: string,
 		back: string,
@@ -22,18 +12,47 @@
 		selected_deck: string,
 		display_multi: boolean,
 		making_multi: boolean,
-		textfield: string
+		textfield: string,
 	}
 
+	// rendering data that is extracted from textfield
 	interface FieldPair {
 		front: string,
 		back: string
 	}
 
-	// all decks that are children of the provided file system entry
+
+	// FrontendCard contains properties that can be edited in the frontend
+	interface FrontendCard {
+		id: number,
+		front: string,
+		back: string,
+		deck_name: string,
+	}
+
+	// MetaData contains properties that are read-oly fron the frontend
+	interface MetaData {
+		is_created: boolean;
+		last_review: string,
+		box_pos: number,
+	}
+
+	// Card tracks both frontend fields and data for backend algorithm and analysis
+	interface Card {
+		fcard: FrontendCard,
+		md: MetaData
+	}
+	
+	// EntryChildren is what is retrieved from the backend
 	interface EntryChildren {
 		cards: Card[],
 		deck_names: string[]
+	}
+
+	interface CardState {
+		"card_map": Map<number, Card>, // state of cards, mapped by ids
+		"fcards": FrontendCard[],      // frontend cards to display in gallery
+		"rm_stack": Card[] 		       // contains stack of removed cards for undo
 	}
 
 	/*
@@ -48,21 +67,35 @@
 		"selected_deck": '',
 		"display_multi": false,
 		"making_multi": false,
-		"textfield": ''
+		"textfield": '',
 	};
 
-	// name of folder or deck
-	const entry = $page.params.entry;
-	
-	// load decks that are children of this folder
-	let cards: Card[] = [];
+	let cs: CardState = {
+		"card_map": new Map<number, Card>(),
+		"fcards": [],
+		"rm_stack": []
+	}
+
+	// all deck children of provided entry 
 	let deck_names: string[] = [];
 
 	async function getDecks() {
-		let entityChildren: EntryChildren = await invoke('read_decks', { entry });
-		cards = entityChildren.cards;
-		deck_names = entityChildren.deck_names;
+		let entryChildren: EntryChildren = await invoke(
+			'read_decks', 
+			{ "entry": $page.params.entry }
+			);
+		
+		// extract deck names that are children of file system entry
+		deck_names = entryChildren.deck_names;
 		panel.selected_deck = deck_names[0];
+		
+		// load cards into frontend state, `panel.fcards` and `card_map`
+		const cards = entryChildren.cards;
+		for (let card of cards) {
+			cs.card_map.set(card.fcard.id, card);
+			cs.fcards.push(card.fcard);
+		}
+
 	} 
 	getDecks();
 
@@ -72,11 +105,6 @@
 
 	// number of cards created
 	let numCreated = 0;
-	// save cards; called on exit (press 'home') or every four cards
-	async function saveDecks() {
-		await invoke('write_decks', { "cards": cards, "numCreated": numCreated });
-	}
-
 	async function createCard() {
 		// don't save if either field is empty
 		if (((panel.front === '' || panel.back === '') && !panel.making_multi)
@@ -84,96 +112,181 @@
 			return;
 		
 		if (panel.making_multi) {
-
-			let fieldPairs: Array<FieldPair> = await invoke('parse_textfield', 
-				{ "textfield": panel.textfield });
-			panel.making_multi = false;
-
-			let front_temp = panel.front;
-			let back_temp = panel.back;
-
-			for (const pair of fieldPairs) {
-				panel.front = pair.front; 
-				panel.back = pair.back; 
-				createCard() 
-			}
-			
-			panel.front = front_temp;
-			panel.back = back_temp;
-			panel.making_multi = true;
-			panel.textfield = '';
+			createCardTextfield()
 			return;
-
 		}
 
-		let front = panel.front;
-		let back = panel.back;
-
 		// append to cards
+		const front = panel.front;
+		const back = panel.back;
+
 		const id: number = await invoke(
 			"calculate_hash", 
 			{"deckName": panel.selected_deck, "front": front, "back": back }
 			);
-		const new_card: Card = { 
-			"id": id, 
-			"front": front, 
-			"back": back, 
-			"last_review": "0",
-			"box_pos": 0, 
-			"deck_name": panel.selected_deck,
-			"is_created": true
+		const new_card: Card = {
+			"fcard": {
+				"id": id, 
+				"front": front, 
+				"back": back, 
+				"deck_name": panel.selected_deck,
+			},
+			"md": {
+				"last_review": "None",
+				"box_pos": 0, 
+				"is_created": true
+			}
 		};
-		console.log(new_card);
 
-		// TODO: crossfade animation and prepend
-		cards.splice(0, 0, new_card);
-		cards = cards;
-		numCreated += 1;
+		// add card to cards map and display if contains prompt
+		cs.card_map.set(new_card.fcard.id, new_card);
+		if (get_is_displayed(new_card.fcard)) {
+			cs.fcards.splice(0, 0, new_card.fcard);
+			cs.fcards = cs.fcards;
+		}
 
+		// cleanup panel fields
 		panel.front = '';
 		panel.back = '';
-		// save  all cards every fourth card made
-		if (numCreated > 0 && numCreated % 4 == 0) {
+
+		// save all cards every fourth card made
+		if (numCreated > 0 && numCreated % 4 == 0) 
 			saveDecks()
+		numCreated += 1;
+	}
+
+	async function createCardTextfield() {
+		let fieldPairs: Array<FieldPair> = await invoke(
+			'parse_textfield', 
+			{ "textfield": panel.textfield }
+		);
+		panel.making_multi = false;
+
+		let front_temp = panel.front;
+		let back_temp = panel.back;
+
+		for (const pair of fieldPairs) {
+			panel.front = pair.front; 
+			panel.back = pair.back; 
+			createCard() 
 		}
+		
+		panel.front = front_temp;
+		panel.back = back_temp;
+		panel.making_multi = true;
+		panel.textfield = '';
+		return;
+
 	}
 
 	function toggleMulti() {
 		panel.display_multi = !panel.display_multi;
 		panel.making_multi = !panel.making_multi;
 	}
+
+	function get_is_displayed(fcard: FrontendCard): boolean {
+		if (fcard.front.includes(panel.prompt) ||
+			fcard.back.includes(panel.prompt)) {
+				return true;
+			}
+		return false;
+
+	}
 	
-	const filterCards = () => {	
-		// return array of cards that match search term
-	}
-
-	function deleteCard(card: Card) {
-		const index = cards.indexOf(card);
-		if (index > -1) {
-			cards.splice(index, 1);
+	async function filterCards() {	
+		// save edited frontend cards to card_map before erasing fcards
+		for (let fcard of cs.fcards) {
+			let new_card = cs.card_map.get(fcard.id)!;
+			new_card.fcard = fcard;
+			cs.card_map.set(fcard.id, new_card);
 		}
-		cards = cards;
+
+		cs.fcards = [];
+		for (let [id, card] of cs.card_map) {
+			if (get_is_displayed(card.fcard))
+				cs.fcards.push(card.fcard);
+		}
+
+		cs.fcards = cs.fcards;
 	}
 
 
+	function deleteCard(card: FrontendCard) {
+		// delete from gallery display
+		const idx = cs.fcards.indexOf(card);
+		if (idx > -1)
+			cs.fcards.splice(idx, 1);
+
+		// re-render gallery
+		cs.fcards = cs.fcards;
+
+		// delete in card state 
+		let rmd_card = cs.card_map.get(card.id)!;
+		// rmd_card does not exist if card with same id already deleted
+		if (!rmd_card) 
+			return;
+
+		// push to rm_stack in case of undo 
+		cs.rm_stack.push(rmd_card);
+		// (note: delete unable to be undo'd if there was dup id removed)
+		cs.card_map.delete(card.id);
+	}
+
+	function undoDelete() {
+		let new_card = cs.rm_stack.pop();
+		
+		// do nothing if rm_stack is empty
+		if (!new_card)
+			return;
+
+		// add card to cards map and display if contains prompt
+		cs.card_map.set(new_card.fcard.id, new_card);
+		if (get_is_displayed(new_card.fcard)) {
+			cs.fcards.splice(0, 0, new_card.fcard);
+			cs.fcards = cs.fcards;
+		}
+
+	}
 
 	/*
 	 * Animate cards: drag-and-drop and crossfade
 	 */
 
 	const dragDuration = 300
-	// let cards: number[] = Array(20).fill(1).map((_, i) => i + 1)
-	let draggingCard: Card | undefined;
+	let draggingCard: FrontendCard | undefined;
 	let animatingCards = new Set()
 
-	function swapWith(card: Card) {
+	// swaps draggingCard with card
+	function swapWith(card: FrontendCard) {
 		if (draggingCard === card || animatingCards.has(card)) return
 		animatingCards.add(card)
 		setTimeout(() => animatingCards.delete(card), dragDuration)
-		const cardAIndex = cards.indexOf(draggingCard!)
-		const cardBIndex = cards.indexOf(card)
-		cards[cardAIndex] = card
-		cards[cardBIndex] = draggingCard!
+		const cardAIndex = cs.fcards.indexOf(draggingCard!)
+		const cardBIndex = cs.fcards.indexOf(card)
+		cs.fcards[cardAIndex] = card
+		cs.fcards[cardBIndex] = draggingCard!
+	}
+
+	/**
+	 * Write changes to file system
+	 */
+
+	// save cards; called on exit (press 'home') or every four cards
+	async function saveDecks() {
+
+		// save changes of edited cards
+		for (let fcard of cs.fcards) {
+			let new_card = cs.card_map.get(fcard.id);
+			if (!new_card)
+				continue;
+
+			new_card.fcard = fcard;
+			cs.card_map.set(fcard.id, new_card);
+		}
+
+		const cards = Array.from(cs.card_map.values());
+		await invoke('write_decks', { "cards": cards });
+
 	}
 
 	
@@ -183,7 +296,7 @@
 
 <div class="panel">
 	<!-- choose deck name; `selected_deck_name` by default -->
-	<select name="deck_menu" id="deck_menu">
+	<select bind:value={panel.selected_deck} name="deck_menu" id="deck_menu">
 		{#each deck_names as deck_name}
 			<option value={deck_name}> {deck_name} </option>
 		{/each}
@@ -216,13 +329,14 @@
 
 	<div class="lookup_bar">
 		<Search bind:prompt={panel.prompt} on:input={filterCards} />
+		<button on:click={() => undoDelete()}>undo</button>
 	</div>
 
 </div>
 
-{#if cards.length > 0}
 <div class="container">
-	{#each cards as card (card)}
+	<!-- Note: the keyed index must be (card) for the animation to work -->
+	{#each cs.fcards as card (card)}
 		<div
 			animate:flip={{ duration: dragDuration }}
 			class="card"
@@ -232,11 +346,18 @@
 			on:dragenter={() => swapWith(card)}
 			on:dragover|preventDefault
 		>
+			<!-- bar above card -->
 		 	<div class="card_id">
-				{card.deck_name}
+				<!-- change deck of card -->
+				<select bind:value={card.deck_name} name="deck_menu" id="deck_menu">
+					{#each deck_names as deck_name}
+						<option value={deck_name}> {deck_name} </option>
+					{/each}
+				</select>
 				<button on:click={() => deleteCard(card)}>delete</button>
-
 			</div>
+
+			<!-- card fields -->
 			<div class="front">
 				<textarea bind:value={card.front} />
 			</div>
@@ -248,7 +369,6 @@
 		</div>
 	{/each}
 </div>
-{/if}
 
 <style>
 	.container {
