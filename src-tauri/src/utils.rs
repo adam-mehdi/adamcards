@@ -331,7 +331,6 @@ pub fn write_quotas_file(quotas: &Vec<QuotasRecord>, quotas_path: &PathBuf) {
 pub fn redistribute_quotas(quotas: &mut [QuotasRecord]){
 
   assert!(quotas[0].dtg == 0);
-  assert!(quotas[0].nq == 0, "day 0 is allotted a new card");
 
   //  a quantification of effort, score S := 2NQ + RQ
   let score_tot: i32 = compute_study_cost(quotas).iter().sum();

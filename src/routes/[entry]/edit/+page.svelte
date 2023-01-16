@@ -86,6 +86,8 @@
 			);
 		
 		// extract deck names that are children of file system entry
+
+		entryChildren.deck_names = entryChildren.deck_names.map(s => s.replace("~~", "/"))
 		deck_names = entryChildren.deck_names;
 		panel.selected_deck = deck_names[0];
 		
@@ -95,6 +97,9 @@
 			cs.card_map.set(card.fcard.id, card);
 			cs.fcards.push(card.fcard);
 		}
+
+		// render gallery in DOM
+		cs.fcards = cs.fcards;
 
 	} 
 	getDecks();
@@ -179,14 +184,18 @@
 
 	}
 
+	let multiInput: HTMLElement;
+	let firstInput: HTMLElement;
+
 	function toggleMulti() {
 		panel.display_multi = !panel.display_multi;
 		panel.making_multi = !panel.making_multi;
 	}
 
 	function get_is_displayed(fcard: FrontendCard): boolean {
-		if (fcard.front.includes(panel.prompt) ||
-			fcard.back.includes(panel.prompt)) {
+		let prompt = panel.prompt.toLowerCase();
+		if (fcard.front.toLowerCase().includes(prompt) ||
+			fcard.back.toLowerCase().includes(prompt)) {
 				return true;
 			}
 		return false;
@@ -279,7 +288,7 @@
 			let new_card = cs.card_map.get(fcard.id);
 			if (!new_card)
 				continue;
-
+			fcard.deck_name = fcard.front.replace("/", "~~");
 			new_card.fcard = fcard;
 			cs.card_map.set(fcard.id, new_card);
 		}
@@ -291,178 +300,310 @@
 
 	
 </script>
-<a href="/"><button on:click={saveDecks}>Home</button></a>
+<a class="home-button" href="/"><button on:click={saveDecks}>Home</button></a>
+
+	<!-- choose deck name; `selected_deck_name` by default -->
 
 
 <div class="panel">
-	<!-- choose deck name; `selected_deck_name` by default -->
-	<select bind:value={panel.selected_deck} name="deck_menu" id="deck_menu">
-		{#each deck_names as deck_name}
-			<option value={deck_name}> {deck_name} </option>
-		{/each}
-	</select>
-
 	{#if !panel.display_multi}
-	<!-- show center card field -->
-	<div>
-		<div class="front">
-			<textarea class="panel_text" bind:value={panel.front} />
-		</div>
-			
-		<div class="back">
-				<textarea class="panel_text" bind:value={panel.back} />
-		</div>
-	</div>
+	<!-- show center card fields -->
+
+
+		<div class="card">
+			<div class="create-card-front front">                               
+                <textarea          
+					class="panel_text"                                                    
+                    id="upper-field"                                            
+                    bind:this={firstInput}                                                                         
+                    bind:value={panel.front}                                    
+                    autofocus                                                   
+                />                                                              
+            </div>          
+
+			<!-- rule separating front and back fields -->
+			<div class="card-hr" />      
+
+			<div class="create-card-back back">                                 
+                <textarea 
+					class="panel_text" 
+					bind:value={panel.back} 
+				/>         
+            </div>  
+
+
+		<div class="card-create-buttons">                                   
+			<button on:click={createCard}>Create {!panel.display_multi ? "Card" : "Cards"}</button>              
+																			
+			<button on:click={toggleMulti}>{!panel.display_multi ? `Multi Editor` : `Single Editor`}</button>
+
+			<!-- change class of whether deleted based on whether there are deleted cards -->
+			<button class={cs.rm_stack.length == 0 ? "hidden" : ""} on:click={undoDelete}>Undo Delete</button>
+
+			<!-- bar below card -->
+			<select class="card-deck-menu" id="card-deck-menu" bind:value={panel.selected_deck}>
+				{#each deck_names as deck_name}
+					<option value={deck_name}> {deck_name} </option>
+				{/each}
+			</select>
+
+		</div>       
+	</div>                
+
 	{:else}
-	<div>
-		<textarea id="multi_field" bind:value={panel.textfield}></textarea>
-	</div>
+	<div class="card multi">                                                
+		<textarea bind:this={multiInput} bind:value={panel.textfield} autofocus />
+		<div class="card-create-buttons">                                   
+			<button on:click={createCard}>Create {!panel.display_multi ? "Card" : "Cards"}</button>              
+																			
+			<button on:click={toggleMulti}>{!panel.display_multi ? `Multi Editor` : `Single Editor`}</button>
+		</div>                                                              
+	</div>           
 
 	{/if}
 		
-		
-	<!-- sumbit card or change to multi-card -->
-	<div class="submit_bar">
-		<button on:click={createCard}> |-> </button>
-		<button on:click={toggleMulti}> >> </button>
-	</div>
-
-	<div class="lookup_bar">
-		<Search bind:prompt={panel.prompt} on:input={filterCards} />
-		<button on:click={() => undoDelete()}>undo</button>
-	</div>
+	<!-- lookup prompt -->                                
+    <div class="card lookup-bar-card">                                          
+        <input                                                                  
+            type="text"                                                         
+            id="search-input"                                                   
+            placeholder="filter cards"                                          
+            autocomplete="off"                                                  
+            bind:value={panel.prompt}                                           
+            on:input={filterCards}                                              
+        />                                                                      
+    </div>                        
 
 </div>
 
-<div class="container">
-	<!-- Note: the keyed index must be (card) for the animation to work -->
-	{#each cs.fcards as card (card)}
-		<div
-			animate:flip={{ duration: dragDuration }}
-			class="card"
-			draggable="true"
-			on:dragstart={() => draggingCard = card}
-			on:dragend={() => draggingCard = undefined}
-			on:dragenter={() => swapWith(card)}
-			on:dragover|preventDefault
-		>
-			<!-- bar above card -->
-		 	<div class="card_id">
-				<!-- change deck of card -->
-				<select bind:value={card.deck_name} name="deck_menu" id="deck_menu">
-					{#each deck_names as deck_name}
-						<option value={deck_name}> {deck_name} </option>
-					{/each}
-				</select>
-				<button on:click={() => deleteCard(card)}>delete</button>
-			</div>
+<div class="card-container-container">
+	<div class="card-container">   
+		<!-- Note: the keyed index must be (card) for the animation to work -->
+		{#each cs.fcards as card (card)}
+			<div
+				animate:flip={{ duration: dragDuration }}
+				class="card"
+				draggable="true"
+				on:dragstart={() => draggingCard = card}
+				on:dragend={() => draggingCard = undefined}
+				on:dragenter={() => swapWith(card)}
+				on:dragover|preventDefault
+			>
 
-			<!-- card fields -->
-			<div class="front">
-				<textarea bind:value={card.front} />
+				<p class=deck-menu>{card.deck_name.replace("~~", "/")}</p>
+
+				<!-- delete button at top right -->
+				<span 
+					class="remove" 
+					on:click={() => deleteCard(card)} 
+					on:keydown={() => deleteCard(card)}
+					> 
+					✕
+				</span>
+
+				<!-- card fields -->
+				<div class="front card-input">
+					<textarea bind:value={card.front} />
+				</div>
+				<div class="card-hr" />
+				
+				<div class="back card-input">
+					<textarea bind:value={card.back} />
+				</div>
+				
 			</div>
-			
-			<div class="back">
-				<textarea bind:value={card.back} />
-			</div>
-			
-		</div>
-	{/each}
+		{/each}
+	</div>
 </div>
 
 <style>
-	.container {
-		display: grid;
-/* format depends on size of window		 */
-		grid-template-rows: repeat(10, 1fr);
-		grid-template-columns: repeat(4, 1fr);
-		gap: 8px;
+	.multi textarea {                                                           
+        width: 90vw;                                                            
+        max-width: 500px;                                                       
+        height: 200px;                                                          
+    }                                                                           
+                                                                                
+    button {                                                                    
+        border: none;                                                           
+        height: 32px;                                                            
+        border-radius: 0.3em;                                                   
+		background-color: #e1dfdd;; 
+		color: #1f1f1f;
+    }                                                                           
+                                                                                
+    .create-card-front textarea {                                               
+        max-width: 500px;                                                       
+        width: 95vw;                                                            
+    }                                                                           
+                                                                                
+    .create-card-back textarea {                                                
+        max-width: 500px;                                                       
+        width: 95vw;                                                            
+    }                                                                           
+                                                                                
+    .card-container-container {                                                 
+        margin-top: 2em;                                                        
+    }                                                                           
+
+    .card-container {                                                           
+        width: 100%;                                                            
+        height: fit-content;                                                    
+        display: grid;                                                          
+        grid-template-columns: repeat(auto-fit, minmax(300px, max-content));    
+        grid-gap: 16px;                                                         
+        justify-content: center;                                                
+        padding: initial;                                                       
+    }                       
+
+	.card {                                                                     
+        width: 300px;                                                           
+        display: flex;                                                          
+        flex-direction: column;                                                 
+        padding: 8px;                                                           
+        justify-content: center;                                                
+        align-items: space-between;                                             
+                                                                                
+        width: min-content;                                                     
+        height: min-content;                                                    
+        /* font-size: 1.5rem; */                                                
+        border-radius: 1em;                                                     
+                                                                                
+        border: 0px solid #e1dfdd;                                              
+        box-shadow: 0 10px 20px -8px rgba(197, 214, 214);                       
+        transition: all 0.3s cubic-bezier(0, 0, 0.5, 1);                        
+        border-radius: 10px !important;                                         
+        background-color: white;                                                
+    }                                                                           
+                                                                                
+    .card-hr {                                                                  
+        border-top: 1px solid #e1dfdd;                                          
+    }                                                                           
+                                                                                
+    .card-input {                                                               
+        border: none;                                                           
+        border-color: none;                                                     
+        border-radius: 1em;                                                     
+    }                                                                           
+                                                                                
+    textarea {                                                                  
+        font-family:  Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;                                                
+		font-size: 15px;
+		line-height: 140%;
+        width: 256px;                                                           
+        height: 64px;                                                           
+        resize: None;                                                           
+        border: none;                                                           
+        border-radius: 0.8em;                                                   
+        padding: 0.8em;                                                         
+		outline-color: #B9D9EB;         
+                           
+    }                                                                           
+                                                                                
+    .back textarea {                                                            
+        border-radius: 0.2em 0.2em 0.8em 0.8em;                                 
+    }                                                                           
+                                                                                
+    .front textarea {                                                           
+        border-radius: 0.8em 0.8em 0.2em 0.2em;                                 
+    }                                                                           
+
+	/* add image support and submit bar at bottom    */                         
+    .panel {                                                                    
+        margin-top: 100px;                                                      
+        /* height: 38vh; */                                                     
+        display: flex;                                                          
+        flex-direction: column;                                                 
+        justify-content: center;                                                
+        align-items: center;                                                    
+    }                                                                           
+                                                                                
+                                                                                
+    .home-button {                                                              
+        position: fixed;                                                        
+        left: 1em;                                                              
+        bottom: 1em;                                                            
+		cursor: pointer;
+    }                                                                           
+                                                                                
+	.card-create-buttons button {                                               
+        margin: 1em;      
+		cursor: pointer;                                                      
+    }                                                                           
+                                                                                
+    #search-input {                                                             
+		outline-color: #B9D9EB;                                    
+        font-size: 1em;                                                         
+		text-align: center;
+    }                                                                           
+                                                                                
+    .lookup-bar-card {                                                          
+        margin: 1em;
+		width: 30%;
+		height: 20px;
+    }         
+	
+	.deck-menu {
+		opacity: .3;
+		position: relative;
+		top: 8px;
+		font-size: 10px;
+
 	}
 
-	.card {
-		display: flex;
- 		flex-direction:column;
-		padding: 8px;
-		justify-content: center;
-		align-items: center;
-		
-		width: 100%;
-		height: 100%;
-		font-size: 1.5rem;
-	}
-	
-	.front {
-		border-radius: 16px; 
-		/* background-color: ivory; */
-	}
-	
-	.back {
-		border-radius: 16px; 
-		/* background-color: #B9D9EB; */
-	}
-	
-	textarea { 
-		width: 256px; 
-		height: 64px; 
-		border-radius: 16px; 
-		resize: None;
-		font-size: 12px;
-		font-family:"Times";
-	}
-	
 
-	/* add image support and submit bar at bottom	 */
-	.panel {
-		height: 364px;
+	@media (hover: hover) {
+		.remove {
+			visibility: hidden;
+		}
+		.card:hover .remove {
+			visibility: visible;
+			cursor: pointer;
+			position: relative;
+			left: 260px;
+			bottom: 15px;
+			color:#e1dfdd;
+			user-select: none;
+		}
+
+		/* .card-deck-menu {
+			visibility: hidden;
+		}
+
+		.card:hover .card-deck-menu {
+			visibility: visible;
+			position: relative;
+			width: 150px;
+			top: 5px;
+			left: 5px;
+
+			border-radius: 10px !important;                                         
+			font-family: 'Courier New', Courier, monospace;
+			opacity: .6;
+			cursor: pointer;
+			                            
+		} */
+
+
 	}
-	
-	/* .panel_card {
-		display: flex;
- 		flex-direction:column;
-		padding: 8px;
-		justify-content: center;
-		align-items: center;
-		
-		width: 100%;
-		height: 100%;
-		font-size: 1.5rem;
-		
-	} */
-	
-	.panel_text {
-		width: 312px; 
-		height: 86px; 
-		border-radius: 16px; 
-		resize: None;
-		font-size: 16px;
-	}
-	
-	.lookup_bar {
-		height: 8px;
-	}
-	
-	button {
+	.card-deck-menu {
+		visibility: visible;
+		position: relative;
+		width: 150px;
 		height: 32px;
-		font-size: 12px;
+		left: 45px;
+
+
+		border-radius: 10px !important;                                         
+		font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+		font-size: 16;
+		opacity: .8;
+		cursor: pointer;
 	}
 
-	#deck_menu {
-		display: flex;
- 		flex-direction:column;
-		justify-content: center;
-		align-items: center;
+	
+
+	.hidden {
+		visibility: hidden;
 	}
 
-	/* #multi_field { */
-		/* display: flex;
-		flex-direction:column;
-		padding: 8px;
-		justify-content: center;
-		align-items: center;
-		
-		width: 100%;
-		height: 100%;
-		font-size: 16px; */
-
-		
-	</style>
+</style>

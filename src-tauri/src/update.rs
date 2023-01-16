@@ -210,10 +210,10 @@ fn update_quotas(deck_path: &PathBuf, deck_cards: &Vec<Card>) {
 
     // compute new quotas, with new and existing quotas both min sorted by dtg (nq, rq)
     let num_cards = deck_cards.len() as i32;
-    let mut new_quotas = compute_quotas(num_cards, days_to_go, num_boxes);    
+    let new_quotas = compute_quotas(num_cards, days_to_go, num_boxes);    
 
-    discount_past_progressions(&mut new_quotas, &deck_cards);
-    redistribute_quotas(&mut new_quotas);
+    // discount_past_progressions(&mut new_quotas, &deck_cards);
+    // redistribute_quotas(&mut new_quotas);
 
     // save new quotas
     write_quotas_file(&new_quotas, &quotas_path)
@@ -223,6 +223,10 @@ fn update_quotas(deck_path: &PathBuf, deck_cards: &Vec<Card>) {
 
 
 fn discount_past_progressions(new_quotas: &mut Vec<QuotasRecord>, cards: &Vec<Card>) {
+    if new_quotas.len() == 1 {
+      return;
+    }
+
     // get number of cards which are advanced from the initial box
     let mut tot_new_advanced: i32 = cards.iter()
       .map(|x| (x.md.box_pos > 0) as i32).sum();
@@ -291,6 +295,8 @@ pub fn compute_quotas(num_cards: i32, days_to_go: i32, num_boxes: i32)
     // enforce sum of NQ equals number of cards by adding remainder
     if let Some(first) = nq.get_mut(0) {
         *first += n - nq_sum;
+        // no new cards on last day
+        nq.push(0);
     }
                                                                                 
  
@@ -301,10 +307,15 @@ pub fn compute_quotas(num_cards: i32, days_to_go: i32, num_boxes: i32)
     // enforce sum of RQ equals number of cards times number of bins minus 2
     if let Some(last) = rq.last_mut() {
         *last += (n * (b - 2)) - rq_sum;
+        // user reviews all cards the day of exam
+        rq.push(n);
     }
-    // user reviews all cards the day of exam
-    nq.push(0);
-    rq.push(n);
+    
+    // review cards if days_to_go == 0
+    if days_to_go == 0 {
+      nq.push(n);
+      rq.push(n * (b - 1));
+    }
 
     let mut quotas = Vec::new();
     for i in 0..nq.len() {
