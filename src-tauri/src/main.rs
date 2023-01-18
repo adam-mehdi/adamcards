@@ -2,6 +2,7 @@
   all(not(debug_assertions), target_os = "windows"),
   windows_subsystem = "windows"
 )]
+//
 
 use tauri::{
   Manager, 
@@ -32,9 +33,9 @@ mod review;
 use review::{
   ReviewSessionState,
   init_review_session,
-  draw_card,
-  handle_response,
-  cleanup 
+  draw_cards,
+  cleanup,
+  save_card_buffer
 };
 
 /*
@@ -73,8 +74,8 @@ fn main() {
       write_decks,
       parse_textfield,
       init_review_session,
-      draw_card,
-      handle_response,
+      draw_cards,
+      save_card_buffer,
       cleanup,
       ])
     .run(tauri::generate_context!())

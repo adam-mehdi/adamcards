@@ -1,4 +1,4 @@
-
+//
 use tauri;
 use std::{ 
     // sync::{
@@ -31,20 +31,31 @@ use chrono::{
  */
 
 
-// want ReviewSession to be Vec<LeitnerBoxSystem>
-#[derive(Serialize, Deserialize, Hash, Eq, PartialEq, Debug)]
+// Path to folder with app data
+pub struct AppDataDirState{
+  pub path: Option<PathBuf>
+}
+
+#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
 pub struct Card {
+  pub fcard: FrontendCard,
+  pub md: MetaData
+}
+
+// card fields that are editable from frontend
+#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
+pub struct FrontendCard {
   pub id: usize,
-  pub box_pos: usize,
-  pub last_review: String,
   pub front: String,
   pub back: String,
   pub deck_name: String,
 }
 
-// Path to folder with app data
-pub struct AppDataDirState{
-  pub path: Option<PathBuf>
+// read-only data from frontend
+#[derive(Serialize, Deserialize, Debug, Hash, Eq, PartialEq)]
+pub struct MetaData {
+  pub box_pos: usize,
+  pub last_review: String,
 }
 
 // // info about a deck

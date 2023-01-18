@@ -1,4 +1,6 @@
 
+#![allow(unused_imports)]
+#![allow(dead_code)]
 use tauri::State;
 
 use serde::{
@@ -17,7 +19,7 @@ use std::{
     fs::{ OpenOptions, File },
 };
 
-use crate::ReviewSessionState;
+use crate::{ReviewSessionState, review};
 
 use crate::utils::{
     AppDataDirState,
@@ -27,9 +29,12 @@ use crate::utils::{
     get_child_decks,
     QuotasRecord,
     write_quotas_file,
-    redistribute_quotas,
+    // redistribute_quotas,
     path2fname,
-    get_deck_idx
+    get_deck_idx,
+    Card,
+    MetaData,
+    FrontendCard
 };
 
 
@@ -41,28 +46,7 @@ pub struct EntryChildren {
 }
 
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Card {
-  fcard: FrontendCard,
-  md: MetaData
-}
 
-// card fields that are editable from frontend
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FrontendCard {
-  pub id: usize,
-  pub front: String,
-  pub back: String,
-  pub deck_name: String,
-}
-
-// read-only data from frontend
-#[derive(Serialize, Deserialize, Debug)]
-pub struct MetaData {
-  pub is_created: bool,
-  pub box_pos: usize,
-  pub last_review: String,
-}
 
 
 
@@ -107,7 +91,7 @@ pub fn read_decks(data_dir: State<AppDataDirState>, state: State<ReviewSessionSt
       let deck_name = deck_name.to_owned();
 
       let fcard = FrontendCard { id, front, back, deck_name };
-      let md = MetaData { is_created: false, box_pos, last_review };
+      let md = MetaData { box_pos, last_review };
       cards.push( Card { fcard, md });
 
     }
@@ -210,9 +194,9 @@ fn update_quotas(deck_path: &PathBuf, deck_cards: &Vec<Card>) {
 
     // compute new quotas, with new and existing quotas both min sorted by dtg (nq, rq)
     let num_cards = deck_cards.len() as i32;
-    let new_quotas = compute_quotas(num_cards, days_to_go, num_boxes);    
+    let mut new_quotas = compute_quotas(num_cards, days_to_go, num_boxes);    
 
-    // discount_past_progressions(&mut new_quotas, &deck_cards);
+    discount_past_progressions(&mut new_quotas, &deck_cards);
     // redistribute_quotas(&mut new_quotas);
 
     // save new quotas
@@ -221,55 +205,60 @@ fn update_quotas(deck_path: &PathBuf, deck_cards: &Vec<Card>) {
 
 }
 
-
+/**
+ * Decreases values in `new_quotas` to account for past reviews, encoded in 
+ * box positions of cards in `cards`
+ * 
+ * This function arises from the scheme where quotas are computed only based on
+ * number of cards and days until deadline
+ */
 fn discount_past_progressions(new_quotas: &mut Vec<QuotasRecord>, cards: &Vec<Card>) {
-    if new_quotas.len() == 1 {
-      return;
-    }
+  if new_quotas.len() == 1 {
+    return;
+  }
 
-    // get number of cards which are advanced from the initial box
-    let mut tot_new_advanced: i32 = cards.iter()
-      .map(|x| (x.md.box_pos > 0) as i32).sum();
+  // get number of cards which are advanced from the initial box
+  let tot_new_advanced: i32 = cards.iter()
+    .map(|x| (x.md.box_pos > 0) as i32).sum();
 
-    // get number of times cards are advanced, not counting initial advance
-    let mut tot_review_progressions = cards.iter()
-      .map(|x| (x.md.box_pos as i32 - 1) * ((x.md.box_pos != 0) as i32))
-      .sum::<i32>();
+  // get number of times cards are advanced, not counting initial advance
+  let tot_review_advanced = cards.iter()
+    .map(|x| (x.md.box_pos as i32 - 1) * ((x.md.box_pos > 0) as i32))
+    .sum::<i32>();
 
-    let mut counter = 0;
-    let mut dtg = 1;
-    while tot_new_advanced > 0 {
-      if new_quotas[dtg].nq > 0 { 
-        new_quotas[dtg].nq -= 1;
-        tot_new_advanced -= 1;
-      }
 
-      if dtg == new_quotas.len() - 1 {
-        dtg = 1;
-      }
-      counter += 1;
-      dtg += 1;
-      // assumes no deck contains more than 1 million initial advances
-      assert!(counter < 1000000, "infinite loop probably initiated");
-    }
+  let days = new_quotas.len() as i32 - 1;
+  let new_per_day = tot_new_advanced / days;
+  let mut remainder = tot_new_advanced - days * new_per_day;
+  for dtg in 1..new_quotas.len() {
+    new_quotas[dtg].nq -= new_per_day;
 
-    counter = 0;
-    dtg = 1;
-    while tot_review_progressions > 0 {
-      if new_quotas[dtg].rq > 0 { 
-        new_quotas[dtg].rq -= 1;
-        tot_review_progressions-= 1;
-      }
-
-      if dtg == new_quotas.len() - 1 {
-        dtg = 1;
-      }
-      counter += 1;
-      dtg += 1;
-      // assumes no deck contains more than 10 million progressions
-      assert!(counter < 10000000, "infinite loop probably initiated");
+    // subtract remainder to day furthest from deadline
+    if remainder > 0 {
+      let sub_value = std::cmp::min(new_quotas[dtg].nq, remainder);
+      new_quotas[dtg].nq -= sub_value;
+      remainder -= sub_value;
     }
   }
+  assert!(remainder == 0);
+
+  let review_per_day = tot_review_advanced / days;
+
+  let mut remainder = tot_review_advanced - days * review_per_day;
+  for dtg in (1..new_quotas.len()).rev() {
+    new_quotas[dtg].rq -= review_per_day;
+
+    // subtract remainder to before deadline day
+    if remainder > 0 {
+      let sub_value = std::cmp::min(new_quotas[dtg].rq, remainder);
+      new_quotas[dtg].rq -= sub_value;
+      remainder -= sub_value;
+    }
+  }
+
+  assert!(remainder == 0);
+
+}
 
 
 
@@ -365,6 +354,9 @@ pub fn parse_textfield(textfield: String) -> Vec<FieldPair> {
 
 fn process_field(field: &str) -> String {
     let mut field = field.trim();
+    if field.len() < 1 {
+      return "".to_string();
+    }
     let ch = field.chars().next().unwrap();
     if ch == '-' || ch == '*' {
       field =  field.strip_prefix(ch).unwrap().trim();

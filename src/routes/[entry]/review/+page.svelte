@@ -5,7 +5,7 @@
 	import { quintOut } from 'svelte/easing';                                      
     import { crossfade } from 'svelte/transition';                                 
     import { flip } from 'svelte/animate';                                         
-                                                                                   
+                                                                                 
     const [send, receive] = crossfade({                                            
         fallback(node, params) {                                                   
             const style = getComputedStyle(node);                                  
@@ -68,12 +68,11 @@
 	interface ReviewSessionCard {
 		card: Card,
 		stack_before: "new" | "review",
-		stack_after?: "new" | "review" | "done" | null,
-		box_pos_delta?:  number,
-		user_response?: -1 | 0 | 1,
+		stack_after: "new" | "review" | "done" | null,
+		user_response: number | null,
+		box_pos_delta:  number | null,
 	}
 
-	
 	// Quotas summed over all decks
 	interface SummedQuotas {
 		new_left: number,
@@ -85,35 +84,40 @@
 	 * State for review session
 	 */
 	interface SessionState {
-		// quotas: SummedQuotas,
 		stacks: AnimatedCardStacks,
 		card_is_revealed: boolean,      // back field is revealed
 		session_is_finished: boolean,   // review session is completed
 		is_started: boolean, 			// false if session has not started yet
-		// id2idx
+		// id2idx: Map<number, Card>,
 		buf: CardBuffer,
-		// quotas_M_before: SummedQuotas
 	}
 
 
 
 	// write buf_size - min_history every time
-	// const MIN_HISTORY;
-    const BUF_SIZE = 2;
+    const BUF_SIZE = 3;
 	const MOVE_DURATION = 50;
 	
 
 	// initializes frontend and backend state
-	let state: SessionState;
+	let state: SessionState = {
+		stacks: { 
+			new: [],
+			review: [],
+			done: [],
+			studying: null
+		},
+		card_is_revealed: false,
+		session_is_finished: false,
+		is_started: false,
+		buf: { 
+			data: [], 
+			idx: -1 
+		},
+	};
 	async function initState() {
-		// let entry = $page.params.entry;
-		// let quotas: SummedQuotas = await invoke('init_review_session', { "entryName": entry });
-
-		const quotas: SummedQuotas = {
-			new_left: 1,
-			review_left: 1,
-			num_progressed: 0
-		};
+		let entry = $page.params.entry;
+		let quotas: SummedQuotas = await invoke('init_review_session', { "entryName": entry });
 
 		let range = (n: number) => Array.from(Array(n).keys());
 		let stacks: AnimatedCardStacks = {
@@ -138,76 +142,56 @@
 
 	async function drawCards() {
 		// draw card from a backend deck
-		// const items: DrawnItems = await invoke('draw_cards', { BUF_SIZE });
+		const cards: Card[] = await invoke('draw_cards', { "numCards": BUF_SIZE });
 
-		// HARD-CODE FOR TESTING
-		const cards: Card[] = [
-				// card 1
-				{ 
-					fcard: {
-						id: 0,
-						front: "front zero",
-						back: "back zero",
-						deck_name: "test~~adam",
-					},
-					md: {
-						box_pos: 0,
-					}
-				},
-				// card 2
-				{
-					fcard: {
-						id: 1,
-						front: "front one",
-						back: "back one",
-						deck_name: "test~~mehdi",
-					},
-					md: {
-						box_pos: 1,
-					},
-				}
-			]
-		
-		// finish session if no more cards to review
-		if (cards.length == 0) {
-			cleanup();
-		}
-
-		// card buffer
+		// put cards into card buffer
 		let rcards: ReviewSessionCard[] = [];
 		for (let card of cards) {
 			rcards.push({
 				card: card,
 				stack_before: card.md.box_pos == 0 ? "new" : "review",
+				stack_after: null,
+				user_response: null,
+				box_pos_delta: null
 			});
 		}
 
-		state.buf = {
-			data: rcards,
-			idx: -1
-		};
-	}
-	drawCards();
+		// need to assign idxs to cards here TODO
 
+		state.buf.data = rcards;
+		state.buf.idx = -1;	
+	}
 
 	async function getNextCard() {
+		// do not try to draw cards if session is done
+		state.card_is_revealed = false;
+		if (state.session_is_finished)
+			return;
+
 		// draw cards if reached the end of the card state.buffer
 		if (state.buf.idx == state.buf.data.length - 1) {
-			drawCards()
+			await drawCards();
 		}
 		state.buf.idx += 1;
 
-		// finish session if no cards to draw from
-		if (state.buf.data.length == 0)
-			return
-		
-		
+		// finish session if no more cards to review
+		if (state.buf.data.length == 0) {
+			cleanup();
+			console.error("CLEANING UP");
+			return;
+		}
+
 		let curr_card = state.buf.data[state.buf.idx];
 
 		// remove card from proper stack and decrease quota
 		let stack = curr_card.stack_before == "new" ? state.stacks.new 
 			: state.stacks.review;
-		state.stacks.studying = stack.pop()!;
+
+		const study_card: undefined | number = stack.pop();
+		if (study_card !== undefined)
+			state.stacks.studying = study_card;
+		else 
+			console.error("UNDEFINED CARD IN STUDYING");
 
 		// re-render the DOM
 		state = state;
@@ -215,17 +199,21 @@
 
 
 	function handleResponse(response: number) {
+		if (state.buf.idx < 0 || state.buf.data.length <= state.buf.idx) {
+			console.log(state.buf, "producing a type error");
+		}
+
 		let buf_card = state.buf.data[state.buf.idx];
-		let box_pos = buf_card.card.md.box_pos;
+		buf_card.user_response = response - 2;
 
 		// compute box_pos_delta
 		let box_pos_delta = response - 2;
-		if (box_pos_delta == -1 && box_pos <= 1)
+		if (box_pos_delta == -1 && buf_card.card.md.box_pos <= 1)
 			// no moving from review to new nor from new to negative
 			box_pos_delta = 0;
 
 		// move card box position
-		box_pos +=  box_pos_delta;
+		buf_card.card.md.box_pos += box_pos_delta;
 		buf_card.box_pos_delta = box_pos_delta;
 
 		// find the stack where the card ends up
@@ -244,6 +232,11 @@
 		state.stacks.studying = null;
 
 		// id2idx.set(buf_card.card.id, study_idx);
+
+		// save and clear buffer if it is full
+		if (state.buf.idx == state.buf.data.length - 1) {
+			writeBuffer();
+		}
 
 		// get next card from the buffer
 		getNextCard()
@@ -297,7 +290,7 @@
 		let prev_card = state.buf.data[state.buf.idx];
 		
 		// can only undo if current card being studied has been reviewed
-		if (prev_card.stack_after === undefined) {
+		if (prev_card === undefined || prev_card.stack_after === undefined) {
 			return;
 		}
 
@@ -337,23 +330,34 @@
 		return buf_card.stack_before == "new" 
 			? state.stacks.new 
 			: state.stacks.review;
-		
 	}
 
+	async function writeBuffer() {
+		let summedQuotas: SummedQuotas = {
+			"new_left": state.stacks.new.length,
+			"review_left": state.stacks.review.length,
+			"num_progressed": state.stacks.done.length,
+		}
+
+		// TODO: remove summedQuotas; it is just used to do an assert
+		invoke("save_card_buffer", 
+			{"rcards": state.buf.data, "squotas": summedQuotas});
+		state.buf = {data: [], idx: -1};
+	}
 	
 	// called when no more cards or user exits
 	async function cleanup() {
-		// await invoke('cleanup');
-		// state.session_is_finished = true;
+		await invoke('cleanup', { "cardBuffer": state.buf });
+		state.session_is_finished = true;
 	}
 
+
 	function onKeyDown(e: KeyboardEvent) {
+
 		// go back or forward through the buffer given user responses
-		if (e.code == "ArrowLeft") { {
+		if (e.code == "ArrowLeft") { 
 			getLastCard();
 			state.stacks = state.stacks;
-		}
-			
 		} else if (e.code == "ArrowRight") {
 			undoGetLastCard(); 
 			state.stacks = state.stacks;
@@ -362,37 +366,33 @@
 		if (!state.is_started) {
 			state.is_started = true;
 			getNextCard();
-
-		}
-			
-
-		// record a user response
-		if (!state.card_is_revealed)
-			state.card_is_revealed = true;
-		else {
+		} else if (state.card_is_revealed) {
+			// record a user response
 			if (e.code == 'Digit1' || e.code == "KeyJ") 
 				handleResponse(1);
 			else if (e.code == 'Digit2' || e.code == "KeyK")
 				handleResponse(2);
 			else if (e.code == 'Digit3' || e.code == "KeyL")
 				handleResponse(3);
+		} else if (!state.card_is_revealed) {
+			state.card_is_revealed = true;
 		}
-	};
+	} 
+			
 
 
 
 </script>
 
 
+<!-- Home button -->
+<a href="/"><button class="home-button" on:click={cleanup}>Home</button></a>
 
 
 <!-- Listen for keyboard events -->
 <svelte:window on:keydown|preventDefault={onKeyDown} />
 
 
-<!-- Home button -->
-<a href="/">Home</a>
-<!-- <a href="/"><button on:click={cleanup}>Home</button></a> -->
 
 {#if !state.is_started}
 <h3>Welcome. Press any key to begin.</h3>
@@ -402,41 +402,45 @@
 	{#if !state.session_is_finished}
 
 
-<div class='board'>
-	{#if state.stacks.studying !== null}
-	<div class='top'>
-		{#each [state.stacks.studying] as id (id)}
-		
-			<div class="card_display"
-				in:receive="{{key: id}}"
-				out:send="{{key: id}}"
-				animate:flip="{{duration: 50}}">
-				<!-- front of card -->
-				<div>
-					<textarea 
-						class="card_field"
-						bind:value={state.buf.data[state.buf.idx].card.fcard.front}></textarea>
-					<!-- <KaTeXRenderer input={state.card ? state.card.front.toString() : ''} /> -->
-				</div>
+		<div class='board'>
+			{#if state.stacks.studying !== null}
+			<div class='top'>
+				{#each [state.stacks.studying] as id (id)}
+				
+					<div class="card-container"
+						in:receive="{{key: id}}"
+						out:send="{{key: id}}"
+						animate:flip="{{duration: 50}}">
+						<div class="card">
+							<!-- front of card -->
+							<div class="front card-input">
+								<textarea 
+									class="card_field"
+									bind:value={state.buf.data[state.buf.idx].card.fcard.front}></textarea>
+							</div>
 
-				<!-- back of card with buttons on toolbar -->
-				<div class={state.card_is_revealed ? '' : 'hidden'}>
-					<textarea 
-						class="card_field"
-						bind:value={state.buf.data[state.buf.idx].card.fcard.back}></textarea>
-					<!-- <KaTeXRenderer input={state.card ? state.card.back.toString() : ''} /> -->
-					<br />
-					<button on:click={() => handleResponse(1)}>Hard</button>
-					<button on:click={() => handleResponse(2)}>Okay</button>
-					<button on:click={() => handleResponse(3)}>Good</button>
-				</div>
+							<div class="card-hr" />
 
+							<!-- back of card with buttons on toolbar -->
+							<div class="back card-input {state.card_is_revealed ? '' : 'hidden'}">
+								<textarea 
+									bind:value={state.buf.data[state.buf.idx].card.fcard.back}></textarea>
+								<br />
+								<button on:click={() => handleResponse(1)}>Hard</button>
+								<button on:click={() => handleResponse(2)}>Okay</button>
+								<button on:click={() => handleResponse(3)}>Good</button>
+							</div>
+
+
+						</div>
+
+					</div>
+				{/each}
 			</div>
-		{/each}
-	</div>
-	{/if}
-</div>
-
+			{/if}
+		</div>
+	{:else}
+	Congrats! You've completed your session today
 	{/if}
 {/if}
 
@@ -503,11 +507,6 @@
 		visibility: hidden;
 	}
 
-	.card_display {
-		margin: auto;
-		width: 50%;
-		padding: 10px;
-	}
 
 	.card_field {
 		width: 312px; 
@@ -518,9 +517,9 @@
 	}
 
 	/* Whitespace */
-	.whitespace {
-		height: 120px;
-	}
+	/* .whitespace {
+		height: 80%;
+	} */
 
 	/* Stacks */
 	.stacks {
@@ -536,30 +535,109 @@
 	}
 
 	.done_stack {
-		width: 40%;
+		/* width: 33%; */
 		float: left;
 		position: absolute;
 		bottom: 100px;
-		left: 200px;
+		left: 30%;
 	}
 	.new_stack {
-		width: 30%;
+		/* width: 33%; */
 		float: left;
 		padding: 0 1em 0 0;
 		box-sizing: border-box;
 		position: absolute;
 		bottom: 100px;
-		left: 400px;
+		left: 50%;
 	}
 
 	.review_stack {
-		width: 30%;
+		/* width: 33%; */
 		float: left;
 		padding: 0 1em 0 0;
 		box-sizing: border-box;
 		position: absolute;
 		bottom: 100px;
-		left: 600px;
+		left: 70%;
 	}
+
+	/* .home-button {
+		cursor: pointer;
+	} */
+
+	button {                                                                    
+		cursor: pointer;
+        border: none;                                                           
+        height: 32px;                                                            
+        border-radius: 0.3em;                                                   
+		background-color: #e1dfdd;; 
+		color: #1f1f1f;
+    }    
+
+
+
+
+	/* FROM EDIT */
+    .card-container {                                                           
+        width: 100%;                                                            
+        height: fit-content;                                                    
+        display: grid;                                                          
+        grid-template-columns: repeat(auto-fit, minmax(300px, max-content));    
+        grid-gap: 16px;                                                         
+        justify-content: center;                                                
+        padding: initial;                                                       
+    }                       
+
+	.card {                                                                     
+        width: 300px;                                                           
+        /* display: flex;                                                           */
+        /* flex-direction: column;                                                  */
+        padding: 8px;                                                           
+        justify-content: center;                                                
+        align-items: space-between;                                             
+                                                                                
+        width: min-content;                                                     
+        height: min-content;                                                    
+        /* font-size: 1.5rem; */                                                
+        border-radius: 1em;                                                     
+                                                                                
+        border: 0px solid #e1dfdd;                                              
+        box-shadow: 0 10px 20px -8px rgba(197, 214, 214);                       
+        transition: all 0.3s cubic-bezier(0, 0, 0.5, 1);                        
+        border-radius: 10px !important;                                         
+        background-color: white;                                                
+    }                                                                           
+                                                                                
+    .card-hr {                                                                  
+        border-top: 1px solid #e1dfdd;                                          
+    }                                                                           
+                                                                                
+    .card-input {                                                               
+        border: none;                                                           
+        border-color: none;                                                     
+        border-radius: 1em;                                                     
+    }                                                                           
+                                                                                
+    textarea {                                                                  
+        font-family:  Cambria, Cochin, Georgia, Times, 'Times New Roman', serif;                                                
+		font-size: 15px;
+		line-height: 140%;
+        width: 256px;                                                           
+        height: 64px;                                                           
+        resize: None;                                                           
+        border: none;                                                           
+        border-radius: 0.8em;                                                   
+        padding: 0.8em;                                                         
+		outline-color: #B9D9EB;         
+                           
+    }                                                                           
+                                                                                
+    .back textarea {                                                            
+        border-radius: 0.2em 0.2em 0.8em 0.8em;                                 
+    }                                                                           
+                                                                                
+    .front textarea {                                                           
+        border-radius: 0.8em 0.8em 0.2em 0.2em;                                 
+    }    
 
 </style>

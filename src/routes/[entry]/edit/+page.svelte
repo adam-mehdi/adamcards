@@ -288,7 +288,7 @@
 			let new_card = cs.card_map.get(fcard.id);
 			if (!new_card)
 				continue;
-			fcard.deck_name = fcard.front.replace("/", "~~");
+			fcard.deck_name = fcard.deck_name.replace("/", "~~");
 			new_card.fcard = fcard;
 			cs.card_map.set(fcard.id, new_card);
 		}
@@ -300,8 +300,8 @@
 
 	
 </script>
-<a class="home-button" href="/"><button on:click={saveDecks}>Home</button></a>
 
+<a class="home-button" href="/"><button on:click={saveDecks}>Home</button></a>
 	<!-- choose deck name; `selected_deck_name` by default -->
 
 
@@ -341,7 +341,7 @@
 			<button class={cs.rm_stack.length == 0 ? "hidden" : ""} on:click={undoDelete}>Undo Delete</button>
 
 			<!-- bar below card -->
-			<select class="card-deck-menu" id="card-deck-menu" bind:value={panel.selected_deck}>
+			<select class="panel-deck-menu" id="panel-deck-menu" bind:value={panel.selected_deck}>
 				{#each deck_names as deck_name}
 					<option value={deck_name}> {deck_name} </option>
 				{/each}
@@ -390,7 +390,14 @@
 				on:dragover|preventDefault
 			>
 
-				<p class=deck-menu>{card.deck_name.replace("~~", "/")}</p>
+				<!-- bar above card -->
+				<select class="card-deck-menu" id="card-deck-menu" bind:value={card.deck_name}>
+					{#each deck_names as deck_name}
+						<option value={deck_name}> {deck_name} </option>
+					{/each}
+				</select>
+
+				<!-- <p class=deck-menu>{card.deck_name.replace("~~", "/")}</p> -->
 
 				<!-- delete button at top right -->
 				<span 
@@ -429,6 +436,7 @@
         border-radius: 0.3em;                                                   
 		background-color: #e1dfdd;; 
 		color: #1f1f1f;
+		cursor: pointer;
     }                                                                           
                                                                                 
     .create-card-front textarea {                                               
@@ -519,9 +527,9 @@
                                                                                 
                                                                                 
     .home-button {                                                              
-        position: fixed;                                                        
-        left: 1em;                                                              
-        bottom: 1em;                                                            
+        /* position: fixed;                                                         */
+        /* left: 1em;                                                               */
+        /* bottom: 1em;                                                             */
 		cursor: pointer;
     }                                                                           
                                                                                 
@@ -542,13 +550,13 @@
 		height: 20px;
     }         
 	
-	.deck-menu {
+	/* .deck-menu {
 		opacity: .3;
 		position: relative;
 		top: 8px;
 		font-size: 10px;
 
-	}
+	} */
 
 
 	@media (hover: hover) {
@@ -560,12 +568,12 @@
 			cursor: pointer;
 			position: relative;
 			left: 260px;
-			bottom: 15px;
+			bottom: 20px;
 			color:#e1dfdd;
 			user-select: none;
 		}
 
-		/* .card-deck-menu {
+		.card-deck-menu {
 			visibility: hidden;
 		}
 
@@ -573,34 +581,34 @@
 			visibility: visible;
 			position: relative;
 			width: 150px;
-			top: 5px;
-			left: 5px;
+			height: 16px;
+			left: 55px;
 
+			border-style: none;
 			border-radius: 10px !important;                                         
 			font-family: 'Courier New', Courier, monospace;
 			opacity: .6;
 			cursor: pointer;
 			                            
-		} */
+		}
 
 
 	}
-	.card-deck-menu {
+	
+	.panel-deck-menu {
 		visibility: visible;
 		position: relative;
 		width: 150px;
-		height: 32px;
-		left: 45px;
+		height: 28;
+		/* left: 55px; */
 
-
+		border-style: none;
 		border-radius: 10px !important;                                         
-		font-family: 'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
-		font-size: 16;
-		opacity: .8;
+		font-family: 'Courier New', Courier, monospace;
+		opacity: .6;
 		cursor: pointer;
+									
 	}
-
-	
 
 	.hidden {
 		visibility: hidden;

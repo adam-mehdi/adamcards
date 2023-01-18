@@ -1,4 +1,5 @@
-
+#![allow(unused_imports)]
+#![allow(dead_code)]
 use tauri;
 use tauri::State;
 
@@ -24,7 +25,10 @@ use priority_queue::PriorityQueue as PQ;
 
 use crate::utils::{
     Card,
+    MetaData,
+    FrontendCard,
     AppDataDirState,
+    QuotasRecord,
     get_root_path,
     get_child_decks, 
     read_num_boxes,
@@ -34,7 +38,7 @@ use crate::utils::{
     get_days_to_go,
     redistribute_quotas, 
     path2fname, 
-    get_deck_idx
+    get_deck_idx,
 };
 use chrono::Local;
 
@@ -50,7 +54,7 @@ pub struct Quotas {
     deck_name: String
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct SummedQuotas {
     new_left: i32,
     review_left: i32,
@@ -77,6 +81,21 @@ pub struct ReviewSessionState {
     pub deck_paths: Arc<Mutex<Vec<PathBuf>>>,
 }
 
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ReviewSessionCard {
+    card: Card,
+    pub stack_before: String,
+    pub stack_after: Option<String>,
+    pub box_pos_delta:  Option<i32>,
+    pub user_response: Option<i32>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CardBuffer {
+    data: Vec<ReviewSessionCard>,
+    idx: i32,
+}
+
  // ===== Initializing =====
 
 /**
@@ -84,7 +103,7 @@ pub struct ReviewSessionState {
  */
 #[tauri::command] 
 pub fn init_review_session(state: tauri::State<ReviewSessionState>, 
-    data_dir: tauri::State<AppDataDirState>, entry_name: String) {
+    data_dir: tauri::State<AppDataDirState>, entry_name: String) -> SummedQuotas {
 
     // get paths to decks that are children of state
     let root = get_root_path(data_dir);
@@ -92,6 +111,7 @@ pub fn init_review_session(state: tauri::State<ReviewSessionState>,
 
     // initialize quotas and leitner systems for each deck
     let quotas= get_todays_quotas(&deck_paths);
+    let summed_quotas = sum_quotas(&quotas);
     let systems = init_leitner_systems(&deck_paths, &quotas);
 
     // put quotas and leitner systems on app state
@@ -105,8 +125,8 @@ pub fn init_review_session(state: tauri::State<ReviewSessionState>,
     let mut path_state = state.deck_paths.lock().unwrap();
     *path_state = deck_paths;
 
+    summed_quotas
 }
-
 
 
 fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
@@ -116,12 +136,14 @@ fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
     // days to go until deadline for each deck
     let mut dtg: Vec<usize> = Vec::new();
     for deck_path in deck_paths {
-        // update quotas file to account for missed days
-        handle_missed_days(&deck_path); 
 
         // read quotas file
         let quotas_path = deck_path.join("quotas.csv");
-        records_set.push(read_quotas_file(&quotas_path));
+        let mut records = read_quotas_file(&quotas_path);
+
+        // update quotas records to account for missed days
+        handle_missed_days(&mut records, deck_path); 
+        records_set.push(records);
 
         // read days to go
         dtg.push(get_days_to_go(&deck_path) as usize);
@@ -159,12 +181,15 @@ fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
 }
 
 
-// count days in past where quota is not fulfilled, add unfilfilled progressions
-// to today's quota, and redistribute quotas to even out study cost over days
-fn handle_missed_days(deck_path: &PathBuf) {
-    let quotas_path = deck_path.join("quotas.csv");
-    let mut quotas = read_quotas_file(&quotas_path);
+/**
+ * Count days in past where quota is not fulfilled, add unfilfilled progressions
+ * to today's quota, and redistribute quotas to even out study cost over days
+ */
+fn handle_missed_days(quotas: &mut Vec<QuotasRecord>, deck_path: &PathBuf) {
     let curr_idx = get_days_to_go(deck_path) as usize;
+    if (curr_idx as i32) < 0 {
+        panic!("deadline has passed. need logic to skip passed deadline studying")
+    }
 
     // return if no previous days
     if curr_idx + 1 == quotas.len() {
@@ -187,18 +212,42 @@ fn handle_missed_days(deck_path: &PathBuf) {
         return;
     }
 
+    if curr_idx == 0 {
+        quotas[curr_idx].nq += nq_missed;
+        quotas[curr_idx].rq += rq_missed;
+        return;
+    }
+    // add missed cards to days up to and including current day, without deadline day
+    let num_days = quotas.len() as i32 - 1;
+    let new_per_day = nq_missed - num_days;
+    let new_rmdr = nq_missed - new_per_day * num_days;
+    let review_per_day = rq_missed - num_days;
+    let review_rmdr = rq_missed - review_per_day * num_days;
+    for dtg in 1..=curr_idx {
 
-    // add missed cards to current day
+        // distribute burden for missed quotas on past days
+        quotas[dtg].nq += new_rmdr;
+        quotas[dtg].rq += review_rmdr;
+
+        // add remainder to proper days (semi-arbirarily chosen)
+        if dtg == 1 {
+            quotas[dtg].rq += review_rmdr;
+        } else if dtg == curr_idx {
+            quotas[dtg].nq += new_rmdr;
+        }
+
+    }
+
+
     quotas[curr_idx].nq += nq_missed;
     quotas[curr_idx].rq += rq_missed;
 
     // redistribute quotas to even out amount of studying over days
     // let mut new_quotas = records2quotas(&quotas, curr_idx);
-    let new_quotas= &mut quotas[0..=curr_idx];
-    redistribute_quotas(new_quotas);
+    // let new_quotas= &mut quotas[0..=curr_idx];
 
     // write redistributed quotas to file system
-    write_quotas_file(&quotas, &quotas_path);
+    // write_quotas_file(&quotas, &quotas_path);
 }
 
 
@@ -246,19 +295,24 @@ fn init_leitner_system(deck_path: &PathBuf, quotas: &Quotas) -> LeitnerBoxSystem
 
         // Push card to appropriate lbox
         lboxes[box_pos].push(
-            Card { id, box_pos, last_review, front, back, deck_name },
+            Card { 
+                fcard: FrontendCard {id, front, back, deck_name}, 
+                md: MetaData { box_pos, last_review } 
+            },
             Reverse(queue_score)
         );
     }
 
     assert!(lboxes.len() > 0, "num_boxes must be greater than 0");
+    assert!(lboxes[0].len() >= quotas.new_left as usize, "likely failed to save on review");
 
     // get ids to introduce
     let mut new_ids = Vec::new();
     let mut card_cache: Vec<Card> = Vec::new();
+
     for _ in 0..quotas.new_left {
         let drawn_card = lboxes[0].pop().unwrap().0;
-        new_ids.push(drawn_card.id);
+        new_ids.push(drawn_card.fcard.id);
         card_cache.push(drawn_card);
     }
 
@@ -286,77 +340,92 @@ fn get_queue_score(last_review: &str) -> i64 {
     queue_score
 }
 
+fn sum_quotas(quotas: &Vec<Quotas>) -> SummedQuotas {
+    let new_left = quotas.iter().fold(0, |acc, x| acc + x.new_left);
+    let review_left = quotas.iter().fold(0, |acc, x| acc + x.review_left);
+    let num_progressed = quotas.iter().fold(0, |acc, x| acc + x.num_progressed);
+    SummedQuotas { new_left, review_left, num_progressed }
+}
+
 
 
 
  // ===== Drawing next card =====
 
 /**
- * Draws card from Leitner Box system in the app state `state`.
+ * Draws N cards from Leitner Box system in the app state `state`.
  * 
  * Returns DrawnItems, which contains a card if the quota today is not satisfied
  * and None if the review session is finished.
  */
 #[tauri::command] 
-pub fn draw_card(state: tauri::State<ReviewSessionState>) -> DrawnItems {
+pub fn draw_cards(state: State<ReviewSessionState>, num_cards: i32) -> Vec<Card> {
 
     let systems_state= &mut *state.systems.lock().unwrap();
     let quotas_state = &mut *state.quotas.lock().unwrap();
     let deck_state = &mut *state.deck_paths.lock().unwrap();
 
-    // Determine if drawing new or review: 5 new then 10 review
-    let num_progressed = quotas_state.iter()
-        .fold(0, |acc, x| acc + x.num_progressed);
-    let is_new: Option<bool> = is_drawing_new(&quotas_state);
+    let mut cards: Vec<Card> = Vec::new();
+    for _ in 0..num_cards {
+        let card = draw_card(systems_state, quotas_state, deck_state);
 
-    // if quotas are fulfilled
-    if let None = is_new {
-        // card == None triggers cleanup on frontend for finishing review session
-        return DrawnItems { 
-            card: None, 
-            quotas: SummedQuotas { new_left: 0, review_left: 0, num_progressed }
+        match card {
+            // if quotas are fulfilled and no more cards to draw, stop drawing cards
+            None => break,
+            // otherwise, add to drawn cards
+            Some(c) => cards.push(c)
         };
-    };
-    
+
+    }
+
+    cards
+}
+
+fn draw_card(
+    systems_state: &mut Vec<LeitnerBoxSystem>, 
+    quotas_state: &mut Vec<Quotas>, 
+    deck_state: &mut Vec<PathBuf>) -> Option<Card> {
+
+    let is_new: Option<bool> = is_drawing_new(&quotas_state);
+    if let None = is_new {
+        return None;
+    }
 
     let is_new = is_new.unwrap();
     let deck_idx = choose_deck(&quotas_state, is_new);
 
     // extract objects from state for easy reference
-    let quotas = quotas_state.get_mut(deck_idx).unwrap();
-    let leitner_system = systems_state.get_mut(deck_idx).unwrap();
+    let leitner_system = &mut systems_state[deck_idx];
+    let quotas = &mut quotas_state[deck_idx];
 
-    
-    // decrement number of cards left
-    if is_new {
-        quotas.new_left -= 1
-    } else {
-        quotas.review_left -= 1
-    }
-
-    // compute summed quotas for the frontend's display
-    let new_left = quotas_state.iter().fold(0, |acc, x| acc + x.new_left);
-    let review_left = quotas_state.iter().fold(0, |acc, x| acc + x.review_left);
-    let summed_quotas = SummedQuotas { new_left, review_left, num_progressed };
 
     // draw new card: pop until finding a new card in `new_ids`
     let card =  if is_new { 
-        pop_new_card(leitner_system)
+        Some(pop_new_card(leitner_system))
     } else {
-        // Warning: never reaches last day with +1 on get_days_to_go_naive
+        // Warning: never reaches last day with +1 on get_days_to_go_naive TODO
         let is_last_day = get_days_to_go(&deck_state[deck_idx]) == 0;
         pop_review_card(leitner_system, is_last_day)
     };
 
-    return DrawnItems {
-        card: Some(card),
-        quotas: summed_quotas
-    };
-}
+    // decrement number of cards left if a card is successfully popped
+    if let Some(_) = card {
+        if is_new {
+            dbg!("NEW");
+            quotas.new_left -= 1
+        } else {
+            dbg!("REVIEW");
+            quotas.review_left -= 1
+        }
+    }
 
+    card
+}
     
 
+// returns `is_new` if there are cards to review; otherwise None if finished session
 fn is_drawing_new(quotas_state: &Vec<Quotas>) -> Option<bool> {
+
     let num_progressed = quotas_state.iter()
         .fold(0, |acc, x| acc + x.num_progressed);
     let in_new_interval = num_progressed % 15 < 5;
@@ -376,6 +445,8 @@ fn is_drawing_new(quotas_state: &Vec<Quotas>) -> Option<bool> {
 }
 
 
+// chooses deck to sample from. probability of sampling from subsequent boxes
+// decrease linearly
 fn choose_deck(quotas: &Vec<Quotas>, is_new: bool) -> usize {
 
     let mut range = rand::thread_rng();
@@ -395,12 +466,15 @@ fn choose_deck(quotas: &Vec<Quotas>, is_new: bool) -> usize {
     deck_idx
 }
 
+// draw a new card from the first box in chosen leitner system
 fn pop_new_card(leitner_system: &mut LeitnerBoxSystem) -> Card {
     // if id is not in new_ids, then draw again
     let mut temp_cards = Vec::new();
+    assert!(!leitner_system.lboxes[0].is_empty(), "no new cards to draw from");
+
     let new_card = loop {
         let card = leitner_system.lboxes[0].pop().expect("no new cards").0;
-        if leitner_system.new_ids.contains(&card.id) {
+        if leitner_system.new_ids.contains(&card.fcard.id) {
             break card;
         }
         temp_cards.push(card);
@@ -413,7 +487,7 @@ fn pop_new_card(leitner_system: &mut LeitnerBoxSystem) -> Card {
     new_card
 }
 
-fn pop_review_card(leitner_system: &mut LeitnerBoxSystem, is_last_day: bool) -> Card {
+fn pop_review_card(leitner_system: &mut LeitnerBoxSystem, is_last_day: bool) -> Option<Card> {
     // draw review card: 
     //    sample from boxes with probability linearly decreasing with box index
     let num_boxes = leitner_system.lboxes.len() - 1;
@@ -421,30 +495,34 @@ fn pop_review_card(leitner_system: &mut LeitnerBoxSystem, is_last_day: bool) -> 
     // in Mathematica this is FoldList[Sum, 0, Range[num_boxes, 1]]
     let mut bins: Vec<usize> = Vec::new();
     let mut acc: usize = 0;
-    let day_range = get_day_range(num_boxes, is_last_day);
-    for i in day_range {
+    let box_range = get_box_range(num_boxes, is_last_day);
+    for i in box_range {
         acc += i * (!leitner_system.lboxes[i].is_empty() as usize);
         bins.push(acc);
+    }
+
+    // return if no cards to draw
+    if bins.iter().sum::<usize>() == 0 {
+        return None;
     }
 
     let mut rng = rand::thread_rng();
     let max = *bins.last().unwrap();
     let r = rng.gen_range(0..=max);
 
+
     // return box index i if the random number r falls between bins i-1 and i
-    for i in 0..num_boxes {
+    for i in 0..bins.len() {
         if r <= bins[i] {
             if let Some((card, _)) = leitner_system.lboxes[i].pop() {
-                return card;
-            } else {
-                panic!("no cards in chosen box: error with choosing box");
-            }
-        }
+                return Some(card);
+            }         
+        } 
     }
     panic!("no bins found; random number generated incorrectly");
 }
 
-fn get_day_range(num_boxes: usize, is_last_day: bool) -> Rev<Range<usize>> {
+fn get_box_range(num_boxes: usize, is_last_day: bool) -> Rev<Range<usize>> {
     if is_last_day {
         return (1..(num_boxes + 1)).rev();
     } 
@@ -456,64 +534,83 @@ fn get_day_range(num_boxes: usize, is_last_day: bool) -> Rev<Range<usize>> {
 
  // ===== Handling user response =====
 
-#[tauri::command] 
-pub fn handle_response(state: State<ReviewSessionState>, mut card: Card, response: i32) {
 
+
+ /**
+  * Updates backend state with buffer cards and their metadata. Pushes the reviewed
+  * cards back into the Leitner box system.
+  */
+#[tauri::command] 
+pub fn save_card_buffer(state: State<ReviewSessionState>, rcards: Vec<ReviewSessionCard>, 
+    squotas: SummedQuotas) {
+
+    // retrieve state
     let systems_state= &mut *state.systems.lock().unwrap();
     let quotas_state = &mut *state.quotas.lock().unwrap();
     let deck_state = & *state.deck_paths.lock().unwrap();
 
-    let deck_idx = get_deck_idx(&card.deck_name, deck_state)
-        .expect("deck not found in deck_state");
+    // update quotas for each card in buffer
+    for rcard in rcards {
+        push_card_to_lbox(rcard, systems_state, quotas_state, deck_state, true)
+    }
 
-    let quotas = &mut quotas_state[deck_idx];
-    let system = &mut systems_state[deck_idx];
+    let new_summed_quotas = sum_quotas(&quotas_state);
 
-    // response of 1, 2, or 3, is now a score of -1, 0, 1
-    let score = response - 2;
-
-    // update quotas and box position based on score and set last review to now
-    update_quotas_on_response(score, quotas, &card);
-    update_pos_on_response(score, &mut card.box_pos, system.lboxes.len());
-    update_last_review(&mut card.last_review);
-
-    // put card back into leitner box system
-    let queue_score = get_queue_score(&card.last_review);
-    system.lboxes[card.box_pos].push(card, Reverse(queue_score));
+    // dbg!(&new_summed_quotas);
+    // dbg!(&squotas);
+    assert!(new_summed_quotas.new_left == squotas.new_left, "{} {}", 
+        new_summed_quotas.new_left, squotas.new_left);
+    assert!(new_summed_quotas.review_left == squotas.review_left, "{} {}", 
+        new_summed_quotas.review_left, squotas.review_left);
+    assert!(new_summed_quotas.num_progressed == squotas.num_progressed, "{} {}",
+        new_summed_quotas.num_progressed, squotas.num_progressed);
 
 }
 
+fn push_card_to_lbox(
+    mut rcard: ReviewSessionCard, 
+    systems_state: &mut Vec<LeitnerBoxSystem>,
+    quotas_state: &mut Vec<Quotas>,
+    deck_state: &Vec<PathBuf>,
+    is_responded: bool) {
 
-// put card back into proper stack
-fn update_quotas_on_response(score: i32, quotas: &mut Quotas, card: &Card) {
-    // pregress if correct on new card
-    // score == 1 ==> one to progressed and one 
-    if card.box_pos == 0 {
-        if score == 1 {
-            quotas.num_progressed += score;
-        } else {
+    let deck_idx = get_deck_idx(&rcard.card.fcard.deck_name, deck_state)
+        .expect("failed to find deck name");
+
+    if is_responded {
+        update_quotas_on_response(&mut quotas_state[deck_idx], &rcard);
+        update_review_time(&mut rcard.card.md.last_review);
+    }
+
+    let queue_score = get_queue_score(&rcard.card.md.last_review);
+    systems_state[deck_idx].lboxes[rcard.card.md.box_pos]
+        .push(rcard.card, Reverse(queue_score));
+
+}
+
+// updates quotas based on where cards drawn into buffer ended up
+fn update_quotas_on_response(quotas: &mut Quotas, rcard: &ReviewSessionCard) {
+    if let Some(stack_after) = rcard.stack_after.clone() {
+        if stack_after == "new" {
             quotas.new_left += 1;
+        } else if stack_after == "review" {
+            quotas.review_left += 1;
+        } else if stack_after == "done" {
+            quotas.num_progressed += 1;
         }
     }
-    // progress or retract on review card
-    else if card.box_pos > 0 {
-        quotas.review_left -= score;
-        quotas.num_progressed += score;
-    }
+    // } else {
+    //     return;
+    // }
+
+    // if rcard.stack_before == "new" {
+    //     quotas.new_left -= 1;
+    // } else if rcard.stack_before == "review" {
+    //     quotas.review_left -= 1;
+    // }
 }
 
-// returns new box position of card according to `score`
-fn update_pos_on_response(score: i32, box_pos: &mut usize, num_boxes: usize) {
-    let mut new_pos = *box_pos as i32 + score;
-    if new_pos < 0 {
-        new_pos = 0;
-    } else if new_pos > num_boxes as i32 - 1{
-        new_pos = num_boxes as i32 - 1;
-    }
-    *box_pos = new_pos as usize;
-}
-
-fn update_last_review(last_review: &mut String) {
+fn update_review_time(last_review: &mut String) {
     // update last review to YYYY-MM-DDThh:mm:ss+ZZ:ZZ format
     *last_review = Local::now()
     // SecondsFormat records just seconds instead of the default microseconds
@@ -530,18 +627,21 @@ fn update_last_review(last_review: &mut String) {
   * `card` is None.
   */
 #[tauri::command] 
-pub fn cleanup(state: tauri::State<ReviewSessionState>, drawn_card: Option<Card>) {
+pub fn cleanup(state: State<ReviewSessionState>, mut card_buffer: CardBuffer) {
     let systems_state= &mut *state.systems.lock().unwrap();
     let quotas_state = &mut *state.quotas.lock().unwrap();
     let deck_state = & *state.deck_paths.lock().unwrap();
-    
-    // put card back into queue
-    if let Some(card) = drawn_card {
-        let queue_score = get_queue_score(&card.last_review);
-        let i = get_deck_idx(&card.deck_name, deck_state)
-            .expect("did not find deck index in deck state");
-        systems_state[i].lboxes[card.box_pos].push(card, Reverse(queue_score));
+
+
+    // put cards back into the queue, handling responses of those responded ones
+    for card_idx in (0..card_buffer.data.len()).rev() {
+        let is_responded = card_idx < card_buffer.idx as usize;
+        let rcard = card_buffer.data.pop().unwrap();
+        push_card_to_lbox(
+            rcard, systems_state, quotas_state, deck_state, is_responded,
+        );
     }
+    
 
     // write data to deck and quotas csvs, respectively
     cleanup_decks(systems_state, &deck_state);
@@ -571,7 +671,11 @@ fn cleanup_decks(systems_state: &mut Vec<LeitnerBoxSystem>, deck_state: &Vec<Pat
                 if let Some((card, _)) = &mut lboxes[box_idx].pop() {
                     file.write_fmt(format_args!( 
                             "{} >> {} >> {} >> {} >> {}\n", 
-                            card.id, card.box_pos, card.last_review, &card.front, &card.back
+                            card.fcard.id, 
+                            card.md.box_pos,
+                            card.md.last_review, 
+                            &card.fcard.front, 
+                            &card.fcard.back
                         )
                     ).expect("Failed to write deck data");
                 }
