@@ -1,14 +1,19 @@
+#![allow(unused_imports)]
+#![allow(dead_code)]
+
+// boilerplate allowing tauri to work on windows
 #![cfg_attr(
   all(not(debug_assertions), target_os = "windows"),
   windows_subsystem = "windows"
 )]
-//
 
 use tauri::{
-  Manager, 
+  Manager,
   State
 };
 use std::{
+  path::PathBuf,
+  fs::create_dir,
   sync::{
     Mutex, 
     Arc
@@ -38,6 +43,16 @@ use review::{
   save_card_buffer
 };
 
+mod home;
+use home::{
+  read_fs_json,
+  write_fs_json,
+  create_deadline,
+  create_deck,
+  rename_entry,
+  delete_entry
+};
+
 /*
  * Run builder code
  */
@@ -47,28 +62,31 @@ fn main() {
     systems: Arc::new(Mutex::new(Vec::new())),
     quotas: Arc::new(Mutex::new(Vec::new())),
     deck_paths: Arc::new(Mutex::new(Vec::new())),
-    // deck_names: Arc::new(Mutex::new(None))
   };
 
 
   tauri::Builder::default()
+    // define what variables will be in the state of the backend
     .setup(|app| {
       let handle = app.handle();
       let data_dir = handle.path_resolver().app_data_dir().unwrap();
 
-      let app_data_dir_state = AppDataDirState {
+      join_create_dir(&data_dir, "decks");
+      join_create_dir(&data_dir, "deleted");
+      join_create_dir(&data_dir, "folders");
+
+      let data_dir_state = AppDataDirState {
         path: Some(data_dir),
       };
 
-      app.manage(app_data_dir_state);
+
+      app.manage(data_dir_state);
       app.manage(review_session_state);
 
       Ok(())
     })
-    // commands before greet implement actual mio2 functionality, everything else is for
-    // illustrative purposes only and will be removed in the future.
+    // define what backend functions are callable from the frontend
     .invoke_handler(tauri::generate_handler![
-      get_next_card, 
       read_decks,
       calculate_hash,
       write_decks,
@@ -77,41 +95,30 @@ fn main() {
       draw_cards,
       save_card_buffer,
       cleanup,
+      read_fs_json,
+      write_fs_json,
+      create_deadline,
+      create_deck,
+      rename_entry,
+      delete_entry
       ])
+    // run application (boilerplate)
     .run(tauri::generate_context!())
-    
     .expect("error while running tauri application");
 
+
+
 }
 
-
-/*
- * MIO functions
+/**
+ * Helper to setup base directories at root of app data
  */
-
- // TODO: move to review.rs
-#[allow(dead_code)]
-#[tauri::command] 
-fn get_next_card(_state: State<ReviewSessionState>, deck_id: usize) -> Result<i32, String> {
-  // Get next card.
-  // if there are no cards to review, return 'NoCardsToReview'
-  println!("Get next card for deck {}", deck_id);
-
-  // Rewrite this later to handle not being able to get the lock
-  // let mut cards = lboxes.cards_arc.lock().unwrap();
-  Ok(0)
+fn join_create_dir(root: &PathBuf, dir: &str) {
+  let dir = &root.join(dir);
+  if !dir.is_dir() {
+    create_dir(dir)
+      .expect("failed to create data");
+  }
 }
-
-// invoke('post_review', {deckId: usize, reviewScore: u8})
-
-// #[allow(dead_code)]
-// #[tauri::command]
-// fn post_review(_state: State<ReviewSessionState>, data_dir: State<AppDataDirState>,
-//   deck_id: usize, review_score: u8) -> Result<String, String> {
-
-//   println!("{} {}", review_score, deck_id);
-//   get_deck_path(data_dir, "test".to_owned());
-//   Ok("Success".to_string())
-// }
 
 

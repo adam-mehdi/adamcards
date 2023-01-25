@@ -7,7 +7,7 @@
 		"distDir": "../build"
 	},
 	"package": {
-		"productName": "mio2",
+		"productName": "Cardway",
 		"version": "0.1.0"
 	},
 	"tauri": {
@@ -62,7 +62,7 @@
 				"fullscreen": false,
 				"height": 600,
 				"resizable": true,
-				"title": "mio2",
+				"title": "Cardway",
 				"width": 800
 			}
 		]

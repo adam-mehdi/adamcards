@@ -1,16 +1,13 @@
-//
+#[allow(dead_code)]
 use tauri;
 use std::{ 
-    // sync::{
-    //   Mutex, 
-    //   Arc
-    // },
     io::{BufReader, BufRead, BufWriter, Write},
-    path::{ PathBuf },
+    path::{ PathBuf, Path },
     collections::hash_map::DefaultHasher,
     hash::{ Hash, Hasher },
-    // fmt::Debug,
-    fs::{ OpenOptions, read_dir },
+    fmt::Display,
+    fs::{ File, OpenOptions, read_dir },
+    str::FromStr
 };
 use serde::{
     Serialize, 
@@ -18,11 +15,10 @@ use serde::{
 };
 use chrono::{ 
   DateTime,
-//   Duration,
+  Duration,
   prelude::*,
 };
 
-// use crate::review::LeitnerBoxSystem;
 
   
   
@@ -58,13 +54,6 @@ pub struct MetaData {
   pub last_review: String,
 }
 
-// // info about a deck
-// #[derive(Serialize, Deserialize)]
-// struct DeckEntry {
-//   pub id: usize,
-//   pub name: String,
-//   pub deadline_string: String,
-// }
 
 /*
  * Date Helpers
@@ -75,7 +64,8 @@ pub struct MetaData {
       .expect("deadline not found in config");
     
     let datetime = string_to_datetime(&deadline);
-    let days_to_go = days_until_datetime_naive(datetime) as i32;
+    // mark of new day is 2am, and mark of counting test day is 2pm
+    let days_to_go = days_until_deadline(datetime, 2, 14) as i32;
     days_to_go 
  }
 
@@ -94,43 +84,88 @@ pub fn string_to_datetime(string: &str) -> DateTime<FixedOffset> {
     }
 }
 
-// pub fn days_until_datetime(datetime: DateTime<FixedOffset>) -> i64 {
-//     // mark of new day: 2am
-//     // mark that deadline day is day 0: dl >= 2pm
+fn get_next_datetime_at_time(dt: DateTime<FixedOffset>, time: i64) -> DateTime<FixedOffset> {
+  // get time at 2am ahead of now
+  let h = dt.hour() as i64;
+  let m = dt.minute() as i64;
+  let s = dt.second() as i64;
+  let h_until_2am;
+  if h < 2 {
+      h_until_2am = time - h;
+  } else {
+      h_until_2am = 24 + time - h;
+  }
 
-//     let mut days_until = 0;
-//     // get time at 2am ahead of now
-//     let now = Local::now();
-//     let h = now.hour();
-//     let h_until_2am;
-//     if h < 2 {
-//         h_until_2am = 2 - h;
-//     } else {
-//         h_until_2am = 26 - h;
-//     }
-//     let thresh_ts = now.checked_add_signed(
-//         Duration::seconds(h_until_2am as i64 * 60 * 60 )).unwrap();
-//     // count time between now and next 2am
-//     days_until += 1;
-
-//     // 0 days to go if next 2am is after deadline
-//     if thresh_ts.timestamp() > datetime.timestamp() {
-//         return 0;
-//     }
-    
-//     days_until += datetime.signed_duration_since(datetime).num_days();
-
-//     // do not consider deadline day if the deadline is before 2pm
-//     let dt_h = datetime.hour();
-//     if dt_h < 14 {
-//         days_until -= 1;
-//     }
-//     days_until
-// }
-
-pub fn days_until_datetime_naive(datetime: DateTime<FixedOffset>) -> i64 {
-    datetime.signed_duration_since(Local::now()).num_days()
+  let thresh_ts = dt.checked_add_signed(
+    Duration::seconds(h_until_2am as i64 * 60 * 60 - m * 60 - s)).unwrap();
+  thresh_ts
 }
+
+/**
+ * Returns number of days until the given datetime, counting `new_day_time` as 
+ * the time marking transition between days. Returns -1 if now is past the given 
+ * datetime.
+ * 
+ * @param datetime: date of the deadline in rfc3339 format
+ * @param new_day_time: hour (0-24) at which one day switches to the next
+ * @param test_day_time: hour `h` (0-24) such that if the test is after hour h 
+ *                       then the test date is counted 
+ */
+pub fn days_until_deadline(
+    datetime: DateTime<FixedOffset>,
+    new_day_time: i64,
+    test_day_time: i64
+    ) -> i64 {
+    // mark of new day: 2am
+    // mark that deadline day is day 0: dl >= 2pm
+    let mut day_bins: Vec<DateTime<FixedOffset>> = Vec::new();
+
+    let mut inter = Local::now().with_timezone(&datetime.timezone());
+
+    // get next time is at 2am
+    inter = get_next_datetime_at_time(inter, new_day_time);
+    
+    // build up day_bins with datetimes at 2am on consecutive days
+    while inter.timestamp() < datetime.timestamp() {
+      day_bins.push(inter.clone());
+      inter = get_next_datetime_at_time(inter, new_day_time);
+    }
+
+    if day_bins.len() == 0 {
+      // on exam day
+      if Local::now().timestamp() < datetime.timestamp() {
+        return 0;
+      }
+      // past exam
+      return -1;
+    }
+
+    // get deadline time in DateTime<Local>
+    let dl_time = day_bins.last().unwrap().checked_add_signed(
+      Duration::seconds((test_day_time - new_day_time) * 60 * 60)).unwrap();
+
+    // time before test time does not count as a new day if it is before 2pm
+    if datetime.hour() < test_day_time as u32 {
+      day_bins.pop();
+    }
+
+    day_bins.push(dl_time);
+    
+    let now = Local::now().timestamp();
+
+    for i in 0..day_bins.len() {
+      if now < day_bins[i].timestamp() {
+        let days = day_bins.len() - 1 - i;
+        return days as i64;
+      }
+    }
+    panic!("no day bins found")
+}
+
+
+// pub fn days_until_datetime_naive(datetime: DateTime<FixedOffset>) -> i64 {
+//     datetime.signed_duration_since(Local::now()).num_days()
+// }
 
 
 
@@ -157,6 +192,7 @@ pub fn calculate_hash(deck_name: String, front: String, back: String) -> u64 {
  * fs helpers 
  */
 
+
  // finds the index of `deck_name` in `deck_state`, None if not found
  pub fn get_deck_idx(deck_name: &String, deck_state: &Vec<PathBuf>) -> Option<usize> {
     for i in 0..deck_state.len() {
@@ -167,12 +203,10 @@ pub fn calculate_hash(deck_name: String, front: String, back: String) -> u64 {
     None
 }
 
-#[allow(dead_code)]
 pub fn path2string(path: &PathBuf) -> String {
   path.clone().into_os_string().into_string().unwrap()
 }
 
-#[allow(dead_code)]
 pub fn path2fname(path: &PathBuf) -> String {
     path.file_name().unwrap().to_owned().into_string().unwrap().to_string()
 }
@@ -246,13 +280,79 @@ pub fn read_deadline(deck_path: &PathBuf) -> Option<String> {
     None
 }
 
+// appends `field_name = data` to file at `./decks/configs/<deck_name>-cfg.toml`,
+// assuming that the field does not already exist
+pub fn append_val_cfg<T>(cfg_path: &str, field_name: &str, data: T) 
+  where T: Display {
+  let file = OpenOptions::new()
+      .append(true)
+      .create(true)
+      .open(cfg_path)
+      .expect("failed to open deck cfg");
+  let mut file = BufWriter::new(file);
+
+  file.write_fmt(
+      format_args!("{} = {}\n", field_name, data)
+  ).expect("failed to append to  cfg");
+
+}
+
+// updates `field_name` from `./decks/configs/<deck_name>-cfg.toml` with `value`
+// and appends it if not found
+pub fn delete_field_cfg(cfg_path: &str, field_name: &str) {
+
+    assert!(Path::new(cfg_path).is_file());
+    let file = File::open(cfg_path).expect("failed to open cfg");
+    let file = BufReader::new(file);
+    let mut cfg_contents = "".to_string();
+
+    for line in file.lines() {
+        let line = line.expect("failed to read line from cfg");
+        let mut it = line.split("=");
+        let name = it.next().unwrap().trim();
+        if name != field_name {
+          cfg_contents.push_str(&(line + "\n"));
+        }
+    }
+
+    // write contents in file
+    let mut writer = OpenOptions::new()
+        .append(true)
+        .open(cfg_path)
+        .expect("failed to open deck cfg");
+
+    // write contents back into file
+    writer.write_all(cfg_contents.as_bytes())
+        .expect("failed to write contents");
+}
+
+// reads the value of `field_name` from `./decks/configs/<deck_name>-cfg.toml`
+pub fn read_from_cfg(cfg_path: &PathBuf, field_name: &str) -> Option<String> {
+
+    let file = OpenOptions::new()
+        .read(true)
+        .open(cfg_path)
+        .expect("failed to open deck cfg");
+    let file = BufReader::new(file);
+
+    for line in file.lines() {
+        let line = line.expect("failed to read line from cfg");
+        let mut it = line.split("=");
+        let name = it.next().unwrap().trim();
+        if name == field_name {
+            let data = it.next()
+                .expect("trying to retrieve empty field").trim();
+            return Some(data.to_string());
+        }
+    }
+    None
+}
 
 
 /*
  * Algo helpers
  */
 
-#[allow(dead_code)]
 pub fn get_num_boxes(days_to_go: i64) -> i32 {
   let t = days_to_go as i32;
   // bins generated by recursive equation x_n = x_{n-1} + 2^n + 1 

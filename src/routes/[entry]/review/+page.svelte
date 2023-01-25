@@ -392,10 +392,10 @@
 <!-- Listen for keyboard events -->
 <svelte:window on:keydown|preventDefault={onKeyDown} />
 
-
+<div class="whitespace space-y-32">
 
 {#if !state.is_started}
-<h3>Welcome. Press any key to begin.</h3>
+<h3>Welcome, Cardwegian.</h3>
 
 
 {:else} <!-- show card field if session has started, but not finished -->
@@ -426,7 +426,7 @@
 								<textarea 
 									bind:value={state.buf.data[state.buf.idx].card.fcard.back}></textarea>
 								<br />
-								<button on:click={() => handleResponse(1)}>Hard</button>
+								<button class="hover:bg-sky-700" on:click={() => handleResponse(1)}>Hard</button>
 								<button on:click={() => handleResponse(2)}>Okay</button>
 								<button on:click={() => handleResponse(3)}>Good</button>
 							</div>
@@ -445,16 +445,17 @@
 {/if}
 
 
-<div class="whitespace"></div>
 
 
-<div class="stacks">
+	<!-- Need to center contents -->
+	<div class="flex space-x-4 ml-32">
 
 	<!-- animated stacks -->
 		<!-- done -->
-		<div class='done_stack'>
+		<div class='flex items-end align-middle'>
+			<div>
 			{#each state.stacks.done as id (id)}
-				<div class="card_in_stack"
+				<div class="sm:w-20 md:w-28 lg:w-32 xl:w-40 rounded h-2 border-2 border-cyan-400"
 					in:receive="{{key: id}}"
 					out:send="{{key: id}}"
 					animate:flip="{{duration: MOVE_DURATION}}"
@@ -462,13 +463,16 @@
 				
 				</div>	
 			{/each}
-			<p>{state.stacks.done.length} done</p>
+			<div class="bg-cyan-700 sm:w-20 md:w-28 lg:w-32 xl:w-40 rounded h-1"/>
+			</div>
 		</div>
 
 		<!-- new -->
-		<div class='new_stack'>
+		<div class='flex items-end'>
+			<div>
+
 			{#each state.stacks.new as id (id)}
-				<div class="card_in_stack"
+				<div class="sm:w-20 md:w-28 lg:w-32 xl:w-40 rounded h-2 border-2 border-rose-300"
 					in:receive="{{key: id}}"
 					out:send="{{key: id}}"
 					animate:flip="{{duration: MOVE_DURATION}}"
@@ -476,13 +480,15 @@
 				
 				</div>	
 			{/each}
-			<p>{state.stacks.new.length} new left </p>
+			<div class="bg-rose-700 sm:w-20 md:w-28 lg:w-32 xl:w-40 rounded h-1"/>
+			</div>
 		</div>
 
 		<!-- review -->
-		<div class='review_stack'>
+		<div class='flex items-end'>
+			<div>
 			{#each state.stacks.review as id (id)}
-				<div class="card_in_stack"
+				<div class="sm:w-20 md:w-28 lg:w-32 xl:w-40 rounded h-2 border-2 border-blue-700"
 					in:receive="{{key: id}}"
 					out:send="{{key: id}}"
 					animate:flip="{{duration: MOVE_DURATION}}"
@@ -490,17 +496,18 @@
 
 				</div>	
 			{/each}
-			<p>{state.stacks.review.length} review left </p>
+			<div class="bg-blue-700 sm:w-20 md:w-28 lg:w-32 xl:w-40 rounded h-1"/>
+			</div>
 		</div>
 
 
+
+	</div>
 
 </div>
 
 
-
-
-<style>
+<style lang="postcss">
 
 	/* Panel */
 	.hidden {
@@ -516,54 +523,6 @@
 		font-size: 16px;
 	}
 
-	/* Whitespace */
-	/* .whitespace {
-		height: 80%;
-	} */
-
-	/* Stacks */
-	.stacks {
-		max-width: 36em;
-		margin: 0 auto;
-	}
-
-	.card_in_stack {
-		width:80px;
-		height:8px;
-		border:1px solid grey;
-		border-radius: 8px;
-	}
-
-	.done_stack {
-		/* width: 33%; */
-		float: left;
-		position: absolute;
-		bottom: 100px;
-		left: 30%;
-	}
-	.new_stack {
-		/* width: 33%; */
-		float: left;
-		padding: 0 1em 0 0;
-		box-sizing: border-box;
-		position: absolute;
-		bottom: 100px;
-		left: 50%;
-	}
-
-	.review_stack {
-		/* width: 33%; */
-		float: left;
-		padding: 0 1em 0 0;
-		box-sizing: border-box;
-		position: absolute;
-		bottom: 100px;
-		left: 70%;
-	}
-
-	/* .home-button {
-		cursor: pointer;
-	} */
 
 	button {                                                                    
 		cursor: pointer;

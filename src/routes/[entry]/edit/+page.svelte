@@ -1,6 +1,5 @@
 <script lang="ts">
 	import { flip } from 'svelte/animate'
-	import  Search  from '$lib/SearchBarFilter.svelte'
 	import { page } from '$app/stores';
 	import { invoke } from '@tauri-apps/api/tauri';
 
@@ -78,12 +77,20 @@
 
 	// all deck children of provided entry 
 	let deck_names: string[] = [];
+	let no_decks: boolean = false;
 
 	async function getDecks() {
 		let entryChildren: EntryChildren = await invoke(
 			'read_decks', 
 			{ "entry": $page.params.entry }
 			);
+
+		if (entryChildren.deck_names.length == 0) {
+			no_decks = true;
+			return;
+		}
+
+		console.log(entryChildren);
 		
 		// extract deck names that are children of file system entry
 
@@ -304,8 +311,13 @@
 <a class="home-button" href="/"><button on:click={saveDecks}>Home</button></a>
 	<!-- choose deck name; `selected_deck_name` by default -->
 
+<div class="mt-24 flex flex-col justify-center items-center">
 
-<div class="panel">
+	{#if no_decks}
+		<h2 class="font-mono">No decks found. Must create deck under 
+			<span class="font-bold">{$page.params.entry}</span>.</h2>
+	{/if}
+
 	{#if !panel.display_multi}
 	<!-- show center card fields -->
 
@@ -317,7 +329,6 @@
                     id="upper-field"                                            
                     bind:this={firstInput}                                                                         
                     bind:value={panel.front}                                    
-                    autofocus                                                   
                 />                                                              
             </div>          
 
@@ -352,7 +363,7 @@
 
 	{:else}
 	<div class="card multi">                                                
-		<textarea bind:this={multiInput} bind:value={panel.textfield} autofocus />
+		<textarea bind:this={multiInput} bind:value={panel.textfield} />
 		<div class="card-create-buttons">                                   
 			<button on:click={createCard}>Create {!panel.display_multi ? "Card" : "Cards"}</button>              
 																			
@@ -375,7 +386,6 @@
     </div>                        
 
 </div>
-
 <div class="card-container-container">
 	<div class="card-container">   
 		<!-- Note: the keyed index must be (card) for the animation to work -->
@@ -423,7 +433,7 @@
 	</div>
 </div>
 
-<style>
+<style lang="postcss">
 	.multi textarea {                                                           
         width: 90vw;                                                            
         max-width: 500px;                                                       
@@ -515,15 +525,6 @@
         border-radius: 0.8em 0.8em 0.2em 0.2em;                                 
     }                                                                           
 
-	/* add image support and submit bar at bottom    */                         
-    .panel {                                                                    
-        margin-top: 100px;                                                      
-        /* height: 38vh; */                                                     
-        display: flex;                                                          
-        flex-direction: column;                                                 
-        justify-content: center;                                                
-        align-items: center;                                                    
-    }                                                                           
                                                                                 
                                                                                 
     .home-button {                                                              

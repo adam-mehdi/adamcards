@@ -83,7 +83,7 @@ pub struct ReviewSessionState {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ReviewSessionCard {
-    card: Card,
+    pub card: Card,
     pub stack_before: String,
     pub stack_after: Option<String>,
     pub box_pos_delta:  Option<i32>,
@@ -411,10 +411,8 @@ fn draw_card(
     // decrement number of cards left if a card is successfully popped
     if let Some(_) = card {
         if is_new {
-            dbg!("NEW");
             quotas.new_left -= 1
         } else {
-            dbg!("REVIEW");
             quotas.review_left -= 1
         }
     }
@@ -556,8 +554,6 @@ pub fn save_card_buffer(state: State<ReviewSessionState>, rcards: Vec<ReviewSess
 
     let new_summed_quotas = sum_quotas(&quotas_state);
 
-    // dbg!(&new_summed_quotas);
-    // dbg!(&squotas);
     assert!(new_summed_quotas.new_left == squotas.new_left, "{} {}", 
         new_summed_quotas.new_left, squotas.new_left);
     assert!(new_summed_quotas.review_left == squotas.review_left, "{} {}", 
