@@ -1,22 +1,23 @@
 <script lang="ts">
-	import fsStore from '$lib/stores/fsStore'
-	import SettingsTrayButton from './SettingsTrayButton.svelte';
+	import quotaStore from './stores/quotasStore';
+	import SettingsTrayButton from './SettingsTray.svelte';
 
 	export let name: string;
 	export let path: string;
-	$: file_type = name.slice(name.lastIndexOf('.') + 1);
+	let settingsTrayOpen = false;
 
-	
+
+
 
 </script>
 
-<div class="buttons flow-root">
-	<span class="float-left">
+<div class="flow-root">
+	<span class="dark:invert text-blacktext float-left pl-6 {settingsTrayOpen ? "text-columbia dark:text-inverted-columbia font-extrabold" : ""}">
 		{name}
 	</span>
 
 	<!-- SettingsTray -->
-	<SettingsTrayButton entryType="deck" path={path} />
+	<SettingsTrayButton entryType="deck" path={path} bind:settingsTrayOpen/>
 	
 </div>
 
@@ -24,10 +25,11 @@
 
 <style>
 	span {
-		padding: 0 0 0 1.5em;
-		background: url(/icons8-king-of-spades-50.png) 0 0.1em no-repeat;
-		background-size: 1em 1em;
+		/* padding: 0 0 0 1.5em; */
+		
+		background: url(/icons8-king-of-spades-50.png) 0 .25em no-repeat;
 		background-size: 16px;
 	}
+	
 	
 </style>

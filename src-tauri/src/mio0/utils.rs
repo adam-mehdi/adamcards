@@ -66,46 +66,45 @@ pub fn read_from_cfg<T: FromStr>(deck_name: &str, field_name: &str) -> Option<T>
 
 // updates `field_name` from `./decks/configs/<deck_name>-cfg.toml` with `value`
 // and appends it if not found
-// pub fn update_val_cfg<T: Display>(deck_name: String, field_name: String, value: T) {
-// 
-//     let cfg_path = "./decks/configs/".to_string() + &deck_name + "-cfg.toml";
-//     let cfg_path = Path::new(&cfg_path);
-//     let file = OpenOptions::new()
-//         .read(true)
-//         .open(&cfg_path)
-//         .expect("failed to open deck cfg");
-//     let file = BufReader::new(file);
-//     let mut cfg_contents = "".to_string();
-// 
-//     let mut found_val = false;
-//     for line in file.lines() {
-//         let line = line.expect("failed to read line from cfg");
-//         let mut it = line.split("=");
-//         let name = it.next().unwrap().trim();
-//         if !found_val && name == field_name {
-//             cfg_contents.push_str(&format!("{} = {}\n", name, value));
-//             found_val = true;
-//         } else {
-//             cfg_contents.push_str(&line);
-//         }
-//     }
-// 
-//     // write contents in file
-//     let mut writer = OpenOptions::new()
-//         .truncate(true)
-//         .append(true)
-//         .open(cfg_path)
-//         .expect("failed to open deck cfg");
-// 
-//     // write contents back into file
-//     writer.write_all(cfg_contents.as_bytes())
-//         .expect("failed to write contents");
-//     // append field if not found
-//     if !found_val {
-//         writer.write_fmt(format_args!("{} = {}\n", field_name, value))
-//             .expect("failed to append value");
-//     }
-// }
+pub fn update_val_cfg<T: Display>(deck_name: String, field_name: String, value: T) {
+
+    let cfg_path = Path::new(&cfg_path);
+    let file = OpenOptions::new()
+        .read(true)
+        .open(&cfg_path)
+        .expect("failed to open deck cfg");
+    let file = BufReader::new(file);
+    let mut cfg_contents = "".to_string();
+
+    let mut found_val = false;
+    for line in file.lines() {
+        let line = line.expect("failed to read line from cfg");
+        let mut it = line.split("=");
+        let name = it.next().unwrap().trim();
+        if !found_val && name == field_name {
+            cfg_contents.push_str(&format!("{} = {}\n", name, value));
+            found_val = true;
+        } else {
+            cfg_contents.push_str(&line);
+        }
+    }
+
+    // write contents in file
+    let mut writer = OpenOptions::new()
+        .truncate(true)
+        .append(true)
+        .open(cfg_path)
+        .expect("failed to open deck cfg");
+
+    // write contents back into file
+    writer.write_all(cfg_contents.as_bytes())
+        .expect("failed to write contents");
+    // append field if not found
+    if !found_val {
+        writer.write_fmt(format_args!("{} = {}\n", field_name, value))
+            .expect("failed to append value");
+    }
+}
 // 
 // // increment `field_name` in `./decks/configs/<deck_name>-cfg.toml` by `value`
 // // (differs from update_val_cfg because supports only i32 and adds instead of 

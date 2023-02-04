@@ -326,6 +326,43 @@ pub fn delete_field_cfg(cfg_path: &str, field_name: &str) {
         .expect("failed to write contents");
 }
 
+
+// // updates `field_name` from `./decks/configs/<deck_name>-cfg.toml` with `value`
+// // and appends it if not found
+// pub fn update_val_cfg<T: Display>(cfg_path: &PathBuf, field_name: &str, value: T) {
+
+//     let file = OpenOptions::new()
+//         .read(true)
+//         .open(&cfg_path)
+//         .expect("failed to open deck cfg");
+//     let file = BufReader::new(file);
+
+//     // write contents in file
+//     let writer = File::create(cfg_path)
+//       .expect("failed to open deck cfg");
+//     let mut writer = BufWriter::new(writer);
+
+//     let mut found_val = false;
+//     for line in file.lines() {
+//         let line = line.expect("failed to read line from cfg");
+//         let mut it = line.split("=");
+//         let name = it.next().unwrap().trim();
+//         let value = it.next().unwrap().trim();
+//         writer.write_fmt(format_args!("{} = {}\n", name, value))
+//           .expect("failed to write line");
+
+//         if !found_val && name == field_name {
+//             found_val = true;
+//         }
+//     }
+
+//     // write contents back into file
+//     if !found_val {
+//         writer.write_fmt(format_args!("{} = {}\n", field_name, value))
+//             .expect("failed to append value");
+//     }
+// }
+
 // reads the value of `field_name` from `./decks/configs/<deck_name>-cfg.toml`
 pub fn read_from_cfg(cfg_path: &PathBuf, field_name: &str) -> Option<String> {
 
@@ -386,7 +423,8 @@ pub struct QuotasRecord {
 // returns records of quotas, sorted with ascending dtg 
 pub fn read_quotas_file(quotas_path: &PathBuf) -> Vec<QuotasRecord> {
 
-    let reader = OpenOptions::new().read(true).open(quotas_path).unwrap();
+    let reader = OpenOptions::new().read(true).open(quotas_path)
+      .expect("failed to read quotas path");
     let reader = BufReader::new(reader);
 
     let mut quotas: Vec<QuotasRecord> = Vec::new();

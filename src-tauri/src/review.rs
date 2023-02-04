@@ -48,10 +48,10 @@ use chrono::Local;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct Quotas {
-    new_left: i32,
-    review_left: i32,
-    num_progressed: i32,
-    deck_name: String
+    pub new_left: i32,
+    pub review_left: i32,
+    pub num_progressed: i32,
+    pub deck_name: String
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -129,7 +129,7 @@ pub fn init_review_session(state: tauri::State<ReviewSessionState>,
 }
 
 
-fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
+pub fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
 
     // entry of deck_paths corresponds to entry in quotas_set
     let mut records_set= Vec::new();
@@ -155,6 +155,7 @@ fn get_todays_quotas(deck_paths: &Vec<PathBuf>) -> Vec<Quotas> {
 
         let (new_left, review_left, num_progressed);
         let deck_name = path2fname(&deck_paths[deck_idx]);
+
 
         if records.len() == 0 {
             // quotas are zero if deck is empty
@@ -212,22 +213,28 @@ fn handle_missed_days(quotas: &mut Vec<QuotasRecord>, deck_path: &PathBuf) {
         return;
     }
 
+    // add missed cards to today if it is the last day
     if curr_idx == 0 {
         quotas[curr_idx].nq += nq_missed;
         quotas[curr_idx].rq += rq_missed;
         return;
     }
+
+
+
     // add missed cards to days up to and including current day, without deadline day
-    let num_days = quotas.len() as i32 - 1;
-    let new_per_day = nq_missed - num_days;
+    let num_days = curr_idx as i32;
+    let new_per_day = nq_missed / num_days;
     let new_rmdr = nq_missed - new_per_day * num_days;
-    let review_per_day = rq_missed - num_days;
+    let review_per_day = rq_missed / num_days;
     let review_rmdr = rq_missed - review_per_day * num_days;
+
+    // distribute cards up to and including current day, skipping day of exam
     for dtg in 1..=curr_idx {
 
         // distribute burden for missed quotas on past days
-        quotas[dtg].nq += new_rmdr;
-        quotas[dtg].rq += review_rmdr;
+        quotas[dtg].nq += new_per_day;
+        quotas[dtg].rq += review_per_day;
 
         // add remainder to proper days (semi-arbirarily chosen)
         if dtg == 1 {
@@ -238,15 +245,7 @@ fn handle_missed_days(quotas: &mut Vec<QuotasRecord>, deck_path: &PathBuf) {
 
     }
 
-
-    quotas[curr_idx].nq += nq_missed;
-    quotas[curr_idx].rq += rq_missed;
-
     // redistribute quotas to even out amount of studying over days
-    // let mut new_quotas = records2quotas(&quotas, curr_idx);
-    // let new_quotas= &mut quotas[0..=curr_idx];
-
-    // write redistributed quotas to file system
     // write_quotas_file(&quotas, &quotas_path);
 }
 
@@ -396,7 +395,6 @@ fn draw_card(
 
     // extract objects from state for easy reference
     let leitner_system = &mut systems_state[deck_idx];
-    let quotas = &mut quotas_state[deck_idx];
 
 
     // draw new card: pop until finding a new card in `new_ids`
@@ -407,15 +405,6 @@ fn draw_card(
         let is_last_day = get_days_to_go(&deck_state[deck_idx]) == 0;
         pop_review_card(leitner_system, is_last_day)
     };
-
-    // decrement number of cards left if a card is successfully popped
-    if let Some(_) = card {
-        if is_new {
-            quotas.new_left -= 1
-        } else {
-            quotas.review_left -= 1
-        }
-    }
 
     card
 }
@@ -586,24 +575,16 @@ fn push_card_to_lbox(
 
 // updates quotas based on where cards drawn into buffer ended up
 fn update_quotas_on_response(quotas: &mut Quotas, rcard: &ReviewSessionCard) {
+    let stack_before = &rcard.stack_before;
     if let Some(stack_after) = rcard.stack_after.clone() {
-        if stack_after == "new" {
-            quotas.new_left += 1;
-        } else if stack_after == "review" {
-            quotas.review_left += 1;
-        } else if stack_after == "done" {
+        if stack_before == "new" && stack_after == "done" {
+            quotas.new_left -= 1;
+            quotas.num_progressed += 1;
+        } else if stack_before == "review" && stack_after == "done" {
+            quotas.review_left -= 1;
             quotas.num_progressed += 1;
         }
-    }
-    // } else {
-    //     return;
-    // }
-
-    // if rcard.stack_before == "new" {
-    //     quotas.new_left -= 1;
-    // } else if rcard.stack_before == "review" {
-    //     quotas.review_left -= 1;
-    // }
+    } 
 }
 
 fn update_review_time(last_review: &mut String) {

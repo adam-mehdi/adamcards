@@ -45,12 +45,16 @@ use review::{
 
 mod home;
 use home::{
+  read_global_config,
+  write_global_config,
   read_fs_json,
   write_fs_json,
   create_deadline,
   create_deck,
   rename_entry,
-  delete_entry
+  delete_entry,
+  get_deck_quotas,
+  get_deadline_progress
 };
 
 /*
@@ -87,7 +91,11 @@ fn main() {
     })
     // define what backend functions are callable from the frontend
     .invoke_handler(tauri::generate_handler![
+      read_global_config,
+      write_global_config,
+      get_deck_quotas,
       read_decks,
+      get_deadline_progress,
       calculate_hash,
       write_decks,
       parse_textfield,
