@@ -76,7 +76,7 @@
 		</span>
 		<SettingsTrayButton entryType="folder" path={path} bind:settingsTrayOpen />
 	</div>
-	<hr class=" w-10 text-columbia"/>
+	<!-- <hr class=" w-6 text-columbia"/> -->
 
 {#if expanded && files !== null}
 	<ul transition:slide={{duration:slideDuration}} class="">		

@@ -197,7 +197,6 @@ fn update_quotas(deck_path: &PathBuf, deck_cards: &Vec<Card>) {
     let mut new_quotas = compute_quotas(num_cards, days_to_go, num_boxes);    
 
     discount_past_progressions(&mut new_quotas, &deck_cards);
-    // redistribute_quotas(&mut new_quotas);
 
     // save new quotas
     write_quotas_file(&new_quotas, &quotas_path)
@@ -212,7 +211,7 @@ fn update_quotas(deck_path: &PathBuf, deck_cards: &Vec<Card>) {
  * This function arises from the scheme where quotas are computed only based on
  * number of cards and days until deadline
  */
-fn discount_past_progressions(new_quotas: &mut Vec<QuotasRecord>, cards: &Vec<Card>) {
+pub fn discount_past_progressions(new_quotas: &mut Vec<QuotasRecord>, cards: &Vec<Card>) {
   if new_quotas.len() == 1 {
     return;
   }
@@ -337,9 +336,9 @@ pub struct FieldPair {
 pub fn parse_textfield(textfield: String) -> Vec<FieldPair> {
   let mut cards: Vec<FieldPair> = Vec::new();
 
-  for line in textfield.lines() {
+  for line in textfield.split("&gt;&gt;&gt;&gt;") {
     // ensure this line contains a valid card
-    if line.matches(">>").count() != 1 {
+    if line.matches("").count() != 1 {
         continue;
     }
     let mut field_it = line.split(">>");
@@ -363,3 +362,16 @@ fn process_field(field: &str) -> String {
     }
     field.to_string()
 }
+
+// fn extract_question(textfield: &mut String) {
+
+//   if textfield.starts_with("<p>") {
+
+//     let question_end = textfield.chars()
+//           .take_while(|&ch| ch != "</p>")
+//           .collect::<String>();
+
+//   }
+
+//   // use regex to split on >> on fields between <p>|<div> and </p>|</div>
+// }

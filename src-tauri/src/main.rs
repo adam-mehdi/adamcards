@@ -20,8 +20,8 @@ use std::{
   }
 };
 
-mod update;
-use update::{
+mod edit;
+use edit::{
   read_decks,
   write_decks,
   parse_textfield,
@@ -54,7 +54,8 @@ use home::{
   rename_entry,
   delete_entry,
   get_deck_quotas,
-  get_deadline_progress
+  get_deadline_progress,
+  reset_deadline
 };
 
 /*
@@ -66,6 +67,7 @@ fn main() {
     systems: Arc::new(Mutex::new(Vec::new())),
     quotas: Arc::new(Mutex::new(Vec::new())),
     deck_paths: Arc::new(Mutex::new(Vec::new())),
+    dtg: Arc::new(Mutex::new(Vec::new()))
   };
 
 
@@ -76,7 +78,6 @@ fn main() {
       let data_dir = handle.path_resolver().app_data_dir().unwrap();
 
       join_create_dir(&data_dir, "decks");
-      join_create_dir(&data_dir, "deleted");
       join_create_dir(&data_dir, "folders");
 
       let data_dir_state = AppDataDirState {
@@ -92,6 +93,7 @@ fn main() {
     // define what backend functions are callable from the frontend
     .invoke_handler(tauri::generate_handler![
       read_global_config,
+      reset_deadline,
       write_global_config,
       get_deck_quotas,
       read_decks,

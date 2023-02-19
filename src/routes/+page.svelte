@@ -6,6 +6,8 @@
 	import fsStore from '$lib/stores/fsStore'
 	import quotasStore from '$lib/stores/quotasStore'
 	import configStore from '$lib/stores/configStore'
+	import deletingStore from '$lib/stores/deletingStore'
+
 
 	type FileSystemObject = {
 		entity_type: 'folder' | 'deadline' | 'deck';
@@ -33,7 +35,6 @@
 	let mode = "";
 
 	// re-render fs on DOM whenever fsStore changes
-	// let fs: FileSystemObject[] = [];
 	$: fs = $fsStore;
 	async function load_file_system() {
 		const root: FileSystemObject = await invoke('read_fs_json');
@@ -41,12 +42,13 @@
 		fsStore.update(() => { return fs; });
 
 		const config: AppConfig = await invoke('read_global_config');
+
 		configStore.update( () => { return config; });
 		mode = $configStore.is_dark_mode ? "dark" : "light"
 
 		await load_quotas()
 	}
-	
+
 	
 
 	// load quotas for today
@@ -54,7 +56,11 @@
 	let loading_quotas = true;
 	async function load_quotas() {
 		// fill `all_entries`, a list of the paths of all entries in the file system
+		all_decks = [];
 		let root: FileSystemObject = $fsStore[0];
+		if (root == undefined)
+			return;
+
 		dfs(root, root.name);
 		
 		loading_quotas = true;
@@ -65,6 +71,7 @@
 		});
 		loading_quotas = false;
 		$quotasStore = $quotasStore;
+
 
 	}
 
@@ -88,11 +95,13 @@
 	load_file_system();
 
 	// write new folder structure `fs` to file system
-	onDestroy(save_fs);
+	onDestroy(async () => {
+		save_fs();
+	});
 
 	async function save_fs() {
-			await invoke('write_fs_json', { "fs": fs });
-			await invoke('write_global_config', { "config": $configStore });
+			invoke('write_fs_json', { "fs": fs });
+			invoke('write_global_config', { "config": $configStore });
 	}
 
 	function toggleDarkMode() {
@@ -106,10 +115,25 @@
 			return config;
 		})
 	}
+
 	
+	function sleep(ms: number) {
+		return new Promise((resolve) => setTimeout(resolve, ms ?? 200));
+	}
+
+	// reload quotas once a deck has been deleted
+	function load_quotas_reactively(): boolean {
+		load_quotas();
+		return true;
+	}
+
 
 </script>
 
+
+<!-- reload component when an item is deleted -->
+{#key $deletingStore}
+{#if !$deletingStore && load_quotas_reactively()}
 
 <div class={mode}>
 	<!-- bar at top -->
@@ -139,9 +163,10 @@
 			</div>
 		</div>
 			
+	
 		{#if !loading_quotas}
 	<!-- folder system -->
-		<div class="max-w-xl mx-auto pl-4 pt-1 lg:ml-56 border-columbia-dark dark:border-columbia border-l border-spacing-28 rounded-lg">
+		<div class="max-w-xl mx-auto pl-4 -pt-2 border-columbia-dark dark:border-columbia border-l rounded-bl-md">
 			{#each fs as entity (entity)}
 				<Folder 
 					name={entity.name} 
@@ -152,8 +177,12 @@
 			{/each}
 		</div>
 		{/if}
+	
 	</div>
+	
 </div>
+{/if}
+{/key}
 
 
 

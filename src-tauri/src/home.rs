@@ -11,24 +11,35 @@ use fs_extra::dir::{
     CopyOptions
 };
 
+use core::num;
 use std::fs::remove_file;
 use std::{
     error::Error,
     fs::{ File, create_dir, read_dir, remove_dir_all, rename, create_dir_all},
-    io::{BufReader, BufWriter, Write},
+    io::{BufReader, BufRead, BufWriter, Write},
     path::{PathBuf, Path}, 
 };
 
 use crate::utils::{
     AppDataDirState,
+    Card,
+    FrontendCard,
+    MetaData,
     append_val_cfg,
     path2string, 
+    path2fname,
     read_from_cfg, 
     get_num_boxes, 
     get_days_to_go,
     string_to_datetime,
     days_until_deadline,
+    write_quotas_file,
     delete_field_cfg
+};
+
+use crate::edit::{
+    compute_quotas,
+    discount_past_progressions
 };
 
 use crate::review::{
@@ -69,6 +80,7 @@ pub struct EntryQuota {
 pub struct PbarData {
     start_date: String,
     end_date: String,
+    end_time: String,
     curr_timestamp: i64,
     end_timestamp: i64,
     days_to_go: i64,
@@ -163,6 +175,7 @@ pub fn create_deadline(
     data_dir: State<AppDataDirState>, 
     path: String,
     new_name: String, 
+    study_intensity: String,
     deadline_date: String, // YYYY-MM-DD format
     deadline_time: String // HH:MM format
 ) {
@@ -186,7 +199,8 @@ pub fn create_deadline(
     append_val_cfg(&dl_cfg, "deadline", deadline);
     append_val_cfg(&dl_cfg, "date_created", date_created);
     append_val_cfg(&dl_cfg, "num_reset", 0);     // number of times deadline is reset
-    append_val_cfg(&dl_cfg, "mastery_level", 0); // (num_boxes + m), so m = -1, 0, 1
+    append_val_cfg(&dl_cfg, "study_intensity", study_intensity);
+
 }
 
  // converts `deadline_date` (YYYY-MM-DD format) and `deadline_time` (HH:MM format)
@@ -246,7 +260,7 @@ pub fn create_deck(data_dir: State<AppDataDirState>, path: String, new_name: Str
     // get metadata used to compute quotas
     let datetime = string_to_datetime(&deadline);
     // mark of new day is 2am, and mark of counting test day is 2pm
-    let days_to_go = days_until_deadline(datetime, 2, 14);
+    let days_to_go = days_until_deadline(datetime, 9, 14);
 
     // compute numBoxes and other deck metadata
     let num_boxes = get_num_boxes(days_to_go);
@@ -346,16 +360,31 @@ pub fn delete_entry(data_dir: State<AppDataDirState>, path: String) {
 
     for dl in dls {
         let dl = dl.expect("failed to unwrap deadline");
-        if &dl.path().as_os_str() == &dl_path.as_os_str() {
+        if &dl.path() == &dl_path {
             remove_file(&dl_path).expect("failed to remove deadline file");
         }
     }
 
-    // read all deck files
     let deck_root = root.join("decks");
-    let deck_path_to_delete = deck_root.join(path);
+
+    // if deck, remove deck dir
+    let deck_path_to_delete = deck_root.join(&path);
     if deck_path_to_delete.is_file() {
         remove_file(&deck_path_to_delete).expect("failed to remove deadline file");
+
+    // if folder/deadline, remove all decks under this folder/deadline
+    } else {
+        let deck_dirs = read_dir(&deck_root).expect("failed to read dirs");
+        let folder_path = path2string(&deck_root.join(path));
+
+        for dir in deck_dirs {
+            let dir = path2string(&dir.unwrap().path());
+
+            // modify paths of all decks to account for change of entry name
+            if dir.starts_with(&folder_path) {
+                remove_dir_all(dir).expect("failed to delete deck dir");
+            }
+        }
     }
 }
 
@@ -367,14 +396,20 @@ pub fn get_deck_quotas(data_dir: State<AppDataDirState>, deck_paths: Vec<String>
     let root = data_dir.path.as_ref().unwrap();
     let deck_root = root.join("decks");
     assert!(deck_root.is_dir(), 
-    "could not find root at {}", deck_root.to_str().unwrap());
+        "could not find root at {}", deck_root.to_str().unwrap());
 
     let mut paths = Vec::new();
     for path in &deck_paths {
         paths.push((&deck_root.join(path)).clone());
     }
 
-    let quotas: Vec<Quotas> = get_todays_quotas(&paths);
+    let mut dtg: Vec<usize> = Vec::new();
+    for deck_path in &paths {
+        dtg.push(
+            get_days_to_go(deck_path) as usize
+        );
+    }
+    let quotas: Vec<Quotas> = get_todays_quotas(&dtg, &paths);
     let mut equotas: Vec<EntryQuota> = Vec::new();
     
     for i in 0..deck_paths.len() {
@@ -420,28 +455,187 @@ pub fn get_deadline_progress(data_dir: State<AppDataDirState>, deadline_name: St
     let now_dt = string_to_datetime(&now);
     let curr_ts = now_dt.timestamp();
 
-    let start_date = rfc2mmdd(date_created);
-    let end_date = rfc2mmdd(deadline);
+    let (start_date, _) = rfc2mmdd(date_created);
+    let (end_date, end_time) = rfc2mmdd(deadline);
 
-    let days_to_go = days_until_deadline(deadline_dt, 2, 14);
+    let days_to_go = days_until_deadline(deadline_dt, 9, 14);
 
     PbarData {
         start_date,
         end_date,
+        end_time,
         curr_timestamp: curr_ts - start_ts,
         end_timestamp: deadline_ts - start_ts,
         days_to_go,
     }
 }
 
-fn rfc2mmdd(rfc_date: String) -> String {
+fn rfc2mmdd(rfc_date: String) -> (String, String) {
     let mut now_it = rfc_date.split("-").skip(1);
     let now_mm = now_it.next().expect("failed to parse current month");
     // for later: convert to month name
     // let now_mm = Month::from_u32(now_mm.parse::<u32>().unwrap());
     let now_dd = now_it.next().expect("failed to parse current day");
-    let now_dd = now_dd.split("T").next().expect("failed to parse day");
+    let mut time_it = now_dd.split("T");
+    let now_dd = time_it.next().expect("failed to parse day");
+
+    let mut time = time_it.next().expect("failed to get time").split(":");
+    let curr_time = "".to_string() + time.next().unwrap() + ":" + time.next().unwrap();
 
     let curr_date = "".to_string() + now_mm + "-" + now_dd;
-    curr_date
+    (curr_date, curr_time)
+}
+
+#[tauri::command] 
+pub fn reset_deadline(
+    data_dir: State<AppDataDirState>, 
+    deadline_name: String,
+    study_intensity: String,
+    deadline_date: String, // YYYY-MM-DD format
+    deadline_time: String // HH:MM format
+) {
+
+    let root = data_dir.path.as_ref().unwrap();
+    let cfg_root = root
+        .join("folders")
+        .join("deadlines");
+
+    let dl_cfg = cfg_root.join(deadline_name.clone() + ".toml");
+    let deadline = time_input2deadline(deadline_date, deadline_time);
+
+    rewrite_deadline(&dl_cfg, &deadline, &study_intensity);
+    
+    rewrite_decks(root, &deadline_name);
+
+
+    
+}
+
+fn rewrite_deadline(dl_cfg: &PathBuf, deadline: &String, study_intensity: &String) {
+    let num_reset = read_from_cfg(&dl_cfg, "num_reset")
+        .expect("failed to retrieve num_reset").parse::<i32>().unwrap();
+    let date_created = read_from_cfg(&dl_cfg, "date_created")
+        .expect("failed to retrieve num_reset");
+
+    let dl_cfg = path2string(&dl_cfg);
+    File::create(&dl_cfg).expect("erase contents of deadline file"); 
+    append_val_cfg(&dl_cfg, "deadline", deadline);
+    append_val_cfg(&dl_cfg, "date_created", date_created);
+    append_val_cfg(&dl_cfg, "num_reset", (num_reset + 1).to_string());
+    append_val_cfg(&dl_cfg, "study_intensity", study_intensity);
+
+}
+
+/**
+ * Rewrites configs of all deck children of given deadline
+ */
+fn rewrite_decks(root: &PathBuf, deadline_name: &String) {
+    let cfg_root = root
+        .join("folders")
+        .join("deadlines")
+        .join("".to_string() + deadline_name + ".toml");
+
+    // read necessary fields from deadline config
+    let deadline = read_from_cfg(&cfg_root, "deadline")
+        .expect("failed to read date_created");
+    let study_intensity = read_from_cfg(&cfg_root, "study_intensity")
+        .expect("failed to read study_intensity")
+        .parse::<i32>().expect("failed to parse num_boxes");
+    let num_reset = read_from_cfg(&cfg_root, "num_reset")
+        .expect("failed to read num_reset")
+        .parse::<i32>().expect("failed to parse num_boxes");
+
+    // get path to deck root
+    let deck_root = root.join("decks");
+    let deck_dirs = read_dir(&deck_root).expect("failed to read dirs");
+
+    // iterate over decks, updating config info for each
+    for dir in deck_dirs {
+        let dir = dir.unwrap();
+        let deck_dir = &dir.path();
+        let deck_name = deck_dir.file_name().unwrap().to_str().unwrap();
+
+        // if deck is a child of the deadline
+        if deck_name.starts_with(deadline_name) {
+            // gather config attributes
+            let deck_cfg = deck_dir.join("config.toml");
+
+            let num_boxes = read_from_cfg(&deck_cfg, "num_boxes")
+                .expect("failed to read num_boxes")
+                .parse::<i32>().expect("failed to parse num_boxes");
+            let date_created = Local::now()
+                .to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+            
+            // get metadata used to compute quotas
+            let datetime = string_to_datetime(&deadline);
+            // mark of new day is 2am, and mark of counting test day is 2pm
+            let days_to_go = days_until_deadline(datetime, 9, 14);
+            let mut new_boxes = get_num_boxes(days_to_go) - num_reset; 
+            if study_intensity == 0 {
+                // set to finishing cards from last deadline
+                new_boxes = 0;
+            } else {
+                new_boxes = std::cmp::max(new_boxes - study_intensity - 2, 2);
+            }
+
+            let num_boxes = num_boxes + new_boxes;
+            let deck_cfg = path2string(&deck_cfg);
+
+            // append new values to deck config
+            append_val_cfg(&deck_cfg, "num_boxes", num_boxes);
+            append_val_cfg(&deck_cfg, "days_to_go", &days_to_go);
+            append_val_cfg(&deck_cfg, "deadline", &deadline);
+            append_val_cfg(&deck_cfg, "date_created", date_created);
+
+            write_new_quotas(&deck_dir, days_to_go as i32, num_boxes);
+
+        }
+    }
+}
+
+fn write_new_quotas(deck_dir: &PathBuf, days_to_go: i32, num_boxes: i32) {
+
+    // read deck's cards to get number of cards and their box positions
+    let deck_cards = read_deck_cards(deck_dir);
+
+    // compute quotas for deck and write them
+    let mut new_quotas = compute_quotas(
+        deck_cards.len() as i32, days_to_go, num_boxes);    
+    discount_past_progressions(&mut new_quotas, &deck_cards);
+    write_quotas_file(&new_quotas, &deck_dir.join("quotas.csv"))
+}
+
+
+fn read_deck_cards(deck_dir: &PathBuf) -> Vec<Card> {
+    let deck_path = deck_dir;
+    let mut cards: Vec<Card> = Vec::new();
+    let cards_path = deck_path.join("cards.csv");
+    if !cards_path.exists() {
+      panic!("cards file not in decks folder. problem: create cards on home
+        Will create deck dir skeleton later");
+    }
+    let deck_name = &path2fname(&deck_path);
+
+    let file = File::open(cards_path).expect("file not found");
+    let file = BufReader::new(file);
+
+    for line in file.lines().skip(1) {
+      let line = line.expect("failed to read line");
+      let mut field_it = line.split(" >> ");
+
+      
+      let id = field_it.next().unwrap().trim().parse::<usize>()
+        .expect("failed to parse id when reading decks");
+      let box_pos = field_it.next().unwrap().parse::<usize>()
+        .expect("failed to parse box pos when reading decks");
+      let last_review = field_it.next().unwrap().to_string();
+      let front = field_it.next().unwrap().to_owned();
+      let back = field_it.next().unwrap().to_owned();
+      let deck_name = deck_name.to_owned();
+
+      let fcard = FrontendCard { id, front, back, deck_name };
+      let md = MetaData { box_pos, last_review };
+      cards.push( Card { fcard, md });
+    }
+    cards
 }

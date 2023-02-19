@@ -3,9 +3,6 @@
 	import {slide} from 'svelte/transition'
 	import SettingsTray from './SettingsTray.svelte';
 	import fsStore from '$lib/stores/fsStore'
-	import configStore from './stores/configStore';
-	import Hint from 'svelte-hint';
-    import { invoke } from '@tauri-apps/api/tauri';
 
 	type FileSystemObject = {
 		entity_type: 'folder' | 'deadline' | 'deck';
@@ -67,84 +64,18 @@
 
 
 
-	interface PbarData {
-		start_date: string,		// MM-DD
-		end_date: string,		// MM-DD
-		curr_timestamp: number, // epoch timestamp of now minus date deck was created 
-		end_timestamp: number,  // epoch timestamp of deadline minus date deck was created 
-		days_to_go: number
-	}
-
-
-	let pbar = {
-		start_date: "",
-		end_date: "",
-		curr_timestamp: 0,
-		end_timestamp: 0,
-		days_to_go: -1
-	}
-
-	let progress = -1;
-	let deadline_complete: boolean = false
-	async function getDeadlineProgress() {
-		pbar = await invoke("get_deadline_progress", { "deadlineName": path });
-		progress = Math.floor(100 * pbar.curr_timestamp / pbar.end_timestamp);
-		if (progress > 100) {
-			progress = 100;
-			deadline_complete = true;
-		}
-
-
-
-	}
-	getDeadlineProgress();
-
-	function getPbarToolbarText(): string {
-
-		if (progress < 100)
-			return `${pbar.days_to_go} days to go with a deadline on ${pbar.end_date.replace("-", "/")}`;
-		else
-			return `Deadline passed on ${pbar.end_date}. Click to reset and keep studying`
-	}
-
-	function handleResetDeadline() {
-		
-	}
 
 </script>
 
 
 <!-- folder container -->
 <div class="relative"> 
-	<div class="buttons flow-root -mb-2">
+	<div class="buttons flow-root">
 		<span class:expanded class="pl-6 font-semibold dark:invert text-blacktext float-left {settingsTrayOpen ? "text-columbia dark:text-inverted-columbia font-extrabold" : ""}" on:click={toggleExpanded} on:keydown={toggleExpanded}>
 			{name}
 		</span>
 
-		{#if progress > -1 && progress < 100}
-		<div class="float-right absolute right-56 mb-1">
-			<Hint placement="left" text={getPbarToolbarText()}>
-				<!-- shell for progress bar -->
-				<div class="h-3 w-20 rounded-md bg-offwhite dark:bg-offblack border ">
-					<!-- filled-up progress -->
-					<div class="h-full rounded-md w-[{progress}%] inner bg-columbia-dark dark:bg-columbia"></div>
-				</div>
-			</Hint>
-		</div>
-		{:else}
-			<div class="float-right absolute right-56 mb-1">
-				<Hint placement="left" text={getPbarToolbarText()}>
-					<button class="cursor-pointer" on:click={handleResetDeadline}>
-						<div class="h-3 w-20 rounded-md bg-offwhite dark:bg-offblack border ">
-							<div class="h-full rounded-md w-[{progress}%] inner opacity-50 bg-columbia-dark dark:bg-columbia"></div>
-						</div>
-					</button>
-				</Hint>
-			</div>
-
-		{/if}
-
-		<SettingsTray entryType="deadline" path={path} bind:settingsTrayOpen/>
+		<SettingsTray entryType="deadline" path={path} bind:settingsTrayOpen />
 		<!-- progress bar -->
 		
 		
@@ -156,12 +87,12 @@
 
 
 	{#if expanded && files !== null}
-		<ul transition:slide={{duration:150}} class="border-l-[1px] border-separate rounded-lg ml-6 pl-2 -mt-2 border-columbia-dark dark:border-columbia">
+		<ul transition:slide={{duration:150}} class="border-l-[1px] border-separate rounded-lg ml-6 pl-2 border-columbia-dark dark:border-columbia">
 					
 			{#each files as file}
 				<li class="first:pt-2">
 					{#if file.entity_type === 'deck'}
-						<Deck name={file.name} path={path.concat(`~~${file.name}`)}/>
+						<Deck name={file.name} path={path.concat(`~~${file.name}`)} />
 
 					{:else}
 						{console.error("Deadlines must hold decks and only decks")}
