@@ -735,7 +735,6 @@ fn cleanup_decks(systems_state: &mut Vec<LeitnerBoxSystem>, deck_state: &Vec<Pat
 // read an updated quotas_state into the file system
 fn cleanup_quotas(quotas_state: &mut Vec<Quotas>, deck_state: &Vec<PathBuf>) {
     assert!(quotas_state.len() == deck_state.len());
-    dbg!(&quotas_state);
 
     for deck_idx in 0..quotas_state.len() {
         let quotas_path = deck_state[deck_idx].join("quotas.csv");

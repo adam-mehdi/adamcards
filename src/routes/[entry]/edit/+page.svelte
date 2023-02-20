@@ -15,9 +15,9 @@
 	import {clickOutside} from '$lib/actions/click_outside.js';
 	import configStore from '$lib/stores/configStore'
 	import Editor from '@tinymce/tinymce-svelte';
-	import { math, display } from 'mathlifier';
 	import Hint from 'svelte-hint';
 	import { preprocess, text_patterns, apiKey } from '$lib/editor';
+	const scriptSrc = "/src/lib/tinymce/js/tinymce/tinymce.min.js";
 
 
 	// contains state for the central panel on which cards are created
@@ -477,7 +477,7 @@
 <div class="min-h-screen h-full bg-offwhite dark:bg-offblack">
 		
 		<!-- home button -->
-		<div class="flex justify-start space-x-5 mx-10 mt-1">
+		<div class="flex justify-start space-x-5 mx-10">
 			
 			<!-- home button -->
 			<a href="/" class="outline-columbia  ring-columbia mt-1 focus:outline-none focus:ring duration-75 rounded-md">
@@ -532,14 +532,15 @@
 				<div class="h-full max-h-80 mx-2 mb-1 border-l rounded-md border-columbia" >         
 				  <!-- md:w-[700px] lg:w-[800px] -->
 					<div class="h-full p-1 rounded-lg ">
-						<Editor {apiKey} {conf} inline={false} bind:value={panel.front} scriptSrc="/path/or/url/to/tinymce.min.js"/>
+						<Editor {conf} inline={false} bind:value={panel.front} {scriptSrc}/>
+
 					</div>
 				</div>          
 
 				<!-- back field -->
 				<div class="h-full max-h-80 mx-2 border-l rounded-md mb-1 border-columbia" >         
 					<div class="h-full p-1 rounded-lg ">
-						<Editor {apiKey} {conf} inline={false} bind:value={panel.back} scriptSrc="/path/or/url/to/tinymce.min.js"/>
+						<Editor {conf} inline={false} bind:value={panel.back} {scriptSrc}/>
 					</div>
 				</div>          
 					
@@ -547,7 +548,7 @@
 			{:else}
 				<div class="h-full m-3 mb-1 text-inherit" >         
 					<div class="h-full p-1 rounded-lg ">
-						<Editor {apiKey} conf={textfield_conf} inline={false} bind:value={panel.textfield} scriptSrc="/path/or/url/to/tinymce.min.js"/>
+						<Editor conf={textfield_conf} inline={false} bind:value={panel.textfield} {scriptSrc}/>
 					</div>
 				</div>
 			{/if}
@@ -685,14 +686,14 @@
 					<!-- card fields -->
 						
 						<div class="ml-3 mr-0 w-1/2 m-3 rounded-lg border-l border-columbia border-spacing-4 px-4 py-2">
-							<Editor bind:value={card.front} inline={true} conf={inline_conf} scriptSrc="/path/or/url/to/tinymce.min.js"/>
+							<Editor bind:value={card.front} inline={true} conf={inline_conf} {scriptSrc}/>
 						</div>
 
 						<div class="border-r-2 opacity-30 border-columbia"></div>
 
 						<!-- <div class="card-hr mt-5" /> -->
 						<div class="ml-0 mr-4 w-1/2 m-3 border-r rounded-lg border-columbia border-spacing-4 px-4 py-2">
-							<Editor bind:value={card.back} inline={true} conf={inline_conf} scriptSrc="/path/or/url/to/tinymce.min.js"/>
+							<Editor bind:value={card.back} inline={true} conf={inline_conf} {scriptSrc}/>
 						</div>
 
 						<span 

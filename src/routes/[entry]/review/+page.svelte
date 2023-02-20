@@ -11,6 +11,7 @@
 	import { fade } from 'svelte/transition';
 	import { preprocess, text_patterns, apiKey } from '$lib/editor';
 
+	const scriptSrc = "/src/lib/tinymce/js/tinymce/tinymce.min.js";
 	
 
 	// write buf_size - min_history every time
@@ -543,7 +544,7 @@
 
 						            		<!-- front field -->
 						            		<div class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
-												<Editor bind:value={state.buf.data[state.buf.idx].card.fcard.front} inline={true} conf={inline_conf} {apiKey} scriptSrc="/path/or/url/to/tinymce.min.js"/>     
+												<Editor bind:value={state.buf.data[state.buf.idx].card.fcard.front} inline={true} conf={inline_conf} {scriptSrc}/>     
 						            		</div>          
 
 										<!-- rule separating front and back fields -->
@@ -560,8 +561,8 @@
 						            			<!-- md:w-[700px] lg:w-[800px] -->
 												<Editor 
 													bind:value={state.buf.data[state.buf.idx].card.fcard.back} 
-													inline={true} conf={inline_conf} {apiKey}
-													scriptSrc="/path/or/url/to/tinymce.min.js"
+													inline={true} conf={inline_conf}
+													{scriptSrc}
 												/>     
 											</div>          
 						            			
@@ -613,9 +614,9 @@
 											<div class = "w-1/2 h-full mx-auto dark:text-whitetext rounded-md border pl-11 pt-1 pb-2 pr-1 outline-none cursor-text">
 												<div id="user-answer-bar" class="h-full pt-1 pr-1 rounded-lg ring-columbia focus:outline-none focus:ring duration-75">
 													{#if isUserAnswer1}
-													<Editor bind:value={state.userAnswer1} inline={true} conf={inline_conf_answer} scriptSrc="/path/or/url/to/tinymce.min.js"/>
+													<Editor bind:value={state.userAnswer1} inline={true} conf={inline_conf_answer} {scriptSrc}/>
 													{:else}
-													<Editor bind:value={state.userAnswer2} inline={true} conf={inline_conf_answer} scriptSrc="/path/or/url/to/tinymce.min.js"/>
+													<Editor bind:value={state.userAnswer2} inline={true} conf={inline_conf_answer} {scriptSrc}/>
 													{/if}
 												</div>
 

@@ -14,12 +14,20 @@ const config = {
 	],
 
 	kit: {
-		adapter: adapter({
-			fallback: 'failure.html'
-		}),
-		prerender: {
-			entries: []
-		}
+		adapter: adapter(),
+
+     	// prerender: { default: true },
+		// adapter: adapter({
+		// 	fallback: 'failure.html'
+		// }),
+		// prerender: { 
+		// 	entries: [
+		// 		"*"
+		// 	"/src/routes/+page.svelte",
+		// 	"/src/routes/[param]/edit/+page.svelte",
+		// 	"/src/routes/[param]/review/+page.svelte",
+		// 	]
+		// }
 	}
 };
 
