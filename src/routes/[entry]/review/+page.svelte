@@ -11,7 +11,7 @@
 	import { fade } from 'svelte/transition';
 	import { preprocess, text_patterns, apiKey } from '$lib/editor';
 
-	const scriptSrc = "/src/lib/tinymce/js/tinymce/tinymce.min.js";
+	const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
 	
 
 	// write buf_size - min_history every time

@@ -1,12 +1,12 @@
 
-<head>
+<!-- <head>
 	<link
 	rel="stylesheet"
 	href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css"
 	integrity="sha384-vKruj+a13U8yHIkAyGgK1J3ArTLzrFGBbBc0tDp4ad/EyewESeXE/Iv67Aj8gKZ0"
 	crossorigin="anonymous"
 />
-</head>
+</head> -->
 <script lang="ts">
 	import { flip } from 'svelte/animate'
 	import { page } from '$app/stores';
@@ -17,7 +17,7 @@
 	import Editor from '@tinymce/tinymce-svelte';
 	import Hint from 'svelte-hint';
 	import { preprocess, text_patterns, apiKey } from '$lib/editor';
-	const scriptSrc = "/src/lib/tinymce/js/tinymce/tinymce.min.js";
+	const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
 
 
 	// contains state for the central panel on which cards are created
