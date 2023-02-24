@@ -11,7 +11,7 @@
 	import { fade } from 'svelte/transition';
 	import { preprocess, text_patterns, apiKey } from '$lib/editor';
 
-	const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
+	// const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
 	
 
 	// write buf_size - min_history every time
@@ -462,6 +462,7 @@
 
 	let inline_conf_answer = {
 		skin: isDarkMode ? "oxide-dark": "oxide",
+		referrer_policy: 'origin',
 		menubar: false,
 		toolbar: false,
 		content_style: 'img {object-fit: cover; width: 100%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
@@ -474,6 +475,7 @@
 
 	let inline_conf = {
 		skin: isDarkMode ? "oxide-dark": "oxide",
+		referrer_policy: 'origin',
 		menubar: false,
 		toolbar: false,
 		content_style: 'img {object-fit: cover; width: 100%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
@@ -544,7 +546,7 @@
 
 						            		<!-- front field -->
 						            		<div class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
-												<Editor bind:value={state.buf.data[state.buf.idx].card.fcard.front} inline={true} conf={inline_conf} {scriptSrc}/>     
+												<Editor bind:value={state.buf.data[state.buf.idx].card.fcard.front} inline={true} conf={inline_conf} {apiKey}/>     
 						            		</div>          
 
 										<!-- rule separating front and back fields -->
@@ -562,7 +564,7 @@
 												<Editor 
 													bind:value={state.buf.data[state.buf.idx].card.fcard.back} 
 													inline={true} conf={inline_conf}
-													{scriptSrc}
+													{apiKey}
 												/>     
 											</div>          
 						            			
@@ -571,7 +573,7 @@
 						            		<div class="flex items-center justify-center top-[450px]">     
 						            			<button 
 						            				on:click={() => handleResponse(1)}
-						            				class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 transition-all border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-75">
+						            				class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
 						            				<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
 						            				<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
 						            				Hard 
@@ -581,14 +583,14 @@
 						            				on:click={() => handleResponse(2)}
 													on:keypress={() => handleResponse(2)}
 						            				autofocus
-						            				class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 transition-all border-y border-l border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-75">
+						            				class="h-5 w-1/3 relative z-40 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-x border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
 						            				<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
 						            				<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
 						            				Okay
 						            			</button>      
 
 						            			<button	
-						            				class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 transition-all border-y border-r border-l border-columbia rounded-br-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-75"
+						            				class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-r border-l border-columbia rounded-br-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-0"
 						            				on:click={() => handleResponse(3)} >
 						            				<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
 						            				<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
@@ -614,9 +616,9 @@
 											<div class = "w-1/2 h-full mx-auto dark:text-whitetext rounded-md border pl-11 pt-1 pb-2 pr-1 outline-none cursor-text">
 												<div id="user-answer-bar" class="h-full pt-1 pr-1 rounded-lg ring-columbia focus:outline-none focus:ring duration-75">
 													{#if isUserAnswer1}
-													<Editor bind:value={state.userAnswer1} inline={true} conf={inline_conf_answer} {scriptSrc}/>
+													<Editor bind:value={state.userAnswer1} inline={true} conf={inline_conf_answer} {apiKey}/>
 													{:else}
-													<Editor bind:value={state.userAnswer2} inline={true} conf={inline_conf_answer} {scriptSrc}/>
+													<Editor bind:value={state.userAnswer2} inline={true} conf={inline_conf_answer} {apiKey}/>
 													{/if}
 												</div>
 

@@ -18,3 +18,14 @@ npm run tauri dev
 ```
 
 
+
+## Building
+
+To build the app for distribution, run
+
+```
+npm run build
+npm run tauri build
+```
+
+Make sure code signing is done

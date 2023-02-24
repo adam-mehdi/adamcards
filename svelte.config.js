@@ -14,20 +14,23 @@ const config = {
 	],
 
 	kit: {
-		adapter: adapter(),
+		adapter: adapter(
+			{
+				fallback: 'failure.html'
+			}
+		),
+		alias: {
+			$node: 'src/node_modules/tinymce'
+		},
 
-     	// prerender: { default: true },
-		// adapter: adapter({
-		// 	fallback: 'failure.html'
-		// }),
-		// prerender: { 
-		// 	entries: [
-		// 		"*"
-		// 	"/src/routes/+page.svelte",
-		// 	"/src/routes/[param]/edit/+page.svelte",
-		// 	"/src/routes/[param]/review/+page.svelte",
-		// 	]
-		// }
+		prerender: { 
+			crawl: true,
+			entries: [
+				"/",
+				"/[entry]/edit/",
+				"/[entry]/review/",
+			]
+		}
 	}
 };
 

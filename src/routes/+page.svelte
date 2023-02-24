@@ -49,6 +49,8 @@
 		await load_quotas()
 	}
 
+	load_file_system();
+
 	
 
 	// load quotas for today
@@ -92,7 +94,6 @@
 	}
 	
 
-	load_file_system();
 
 	// write new folder structure `fs` to file system
 	onDestroy(async () => {

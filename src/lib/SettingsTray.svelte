@@ -672,7 +672,7 @@
 				</div>
 			</li>
 
-			{#if entryType !== "deck" && path.includes("~~")}
+			<!-- {#if entryType !== "deck" && path.includes("~~")}
 			<li>
 				<div role="button" 
 					on:click={() => { moveTrayOpen = true; }} on:keypress={() => { moveTrayOpen = true; }}
@@ -680,7 +680,7 @@
 					Move
 				</div>
 			</li>
-			{/if}
+			{/if} -->
 
 			{#if path.includes("~~")}
 			<li>

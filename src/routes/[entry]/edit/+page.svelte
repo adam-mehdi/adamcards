@@ -17,7 +17,7 @@
 	import Editor from '@tinymce/tinymce-svelte';
 	import Hint from 'svelte-hint';
 	import { preprocess, text_patterns, apiKey } from '$lib/editor';
-	const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
+	// const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
 
 
 	// contains state for the central panel on which cards are created
@@ -405,6 +405,7 @@
 
 	let inline_conf = {
 		skin: isDarkMode ? "oxide-dark": "oxide",
+		referrer_policy: 'origin',
 		menubar: false,
 		toolbar: false,
 		content_style: 'img {object-fit: cover; width: 100%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
@@ -416,6 +417,7 @@
 
 	let conf = {
 		menubar: false,
+		referrer_policy: 'origin',
 		min_height: 75,
 		height: 150,
 		max_height: 200,
@@ -435,6 +437,7 @@
 
 	let textfield_conf = {
 		menubar: false,
+		referrer_policy: 'origin',
 		min_height: 75,
 		height: 300,
 		max_height: 600,
@@ -532,7 +535,7 @@
 				<div class="h-full max-h-80 mx-2 mb-1 border-l rounded-md border-columbia" >         
 				  <!-- md:w-[700px] lg:w-[800px] -->
 					<div class="h-full p-1 rounded-lg ">
-						<Editor {conf} inline={false} bind:value={panel.front} {scriptSrc}/>
+						<Editor {conf} inline={false} bind:value={panel.front} {apiKey}/>
 
 					</div>
 				</div>          
@@ -540,7 +543,7 @@
 				<!-- back field -->
 				<div class="h-full max-h-80 mx-2 border-l rounded-md mb-1 border-columbia" >         
 					<div class="h-full p-1 rounded-lg ">
-						<Editor {conf} inline={false} bind:value={panel.back} {scriptSrc}/>
+						<Editor {conf} inline={false} bind:value={panel.back} {apiKey}/>
 					</div>
 				</div>          
 					
@@ -548,7 +551,7 @@
 			{:else}
 				<div class="h-full m-3 mb-1 text-inherit" >         
 					<div class="h-full p-1 rounded-lg ">
-						<Editor conf={textfield_conf} inline={false} bind:value={panel.textfield} {scriptSrc}/>
+						<Editor conf={textfield_conf} inline={false} bind:value={panel.textfield} {apiKey}/>
 					</div>
 				</div>
 			{/if}
@@ -686,14 +689,14 @@
 					<!-- card fields -->
 						
 						<div class="ml-3 mr-0 w-1/2 m-3 rounded-lg border-l border-columbia border-spacing-4 px-4 py-2">
-							<Editor bind:value={card.front} inline={true} conf={inline_conf} {scriptSrc}/>
+							<Editor bind:value={card.front} inline={true} conf={inline_conf} {apiKey}/>
 						</div>
 
 						<div class="border-r-2 opacity-30 border-columbia"></div>
 
 						<!-- <div class="card-hr mt-5" /> -->
 						<div class="ml-0 mr-4 w-1/2 m-3 border-r rounded-lg border-columbia border-spacing-4 px-4 py-2">
-							<Editor bind:value={card.back} inline={true} conf={inline_conf} {scriptSrc}/>
+							<Editor bind:value={card.back} inline={true} conf={inline_conf} {apiKey}/>
 						</div>
 
 						<span 

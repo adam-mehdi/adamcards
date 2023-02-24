@@ -96,14 +96,6 @@ pub struct PbarData {
 pub fn read_global_config(data_dir: State<AppDataDirState>) -> AppConfig { 
     let path = data_dir.path.as_ref().unwrap().join("folders").join("global-config.toml");
 
-    // init global config if hasn't been created yet
-    if !path.is_file() {
-        File::create(&path).expect("failed to open fs json");
-        let path_str = path2string(&path);
-        append_val_cfg(&path_str, "is_dark_mode", "false");
-        append_val_cfg(&path_str, "is_textfield", "false");
-    }
-
     let dark_mode = read_from_cfg(&path, "is_dark_mode")
         .expect("failed to read dark mode");
     let textfield = read_from_cfg(&path, "is_textfield")
