@@ -400,6 +400,7 @@
 	}
 	
 	// called when no more cards or user exits
+	onDestroy(cleanup);
 	async function cleanup() {
 		if (!state.session_is_finished)
 			await invoke('cleanup', { "cardBuffer": state.buf });

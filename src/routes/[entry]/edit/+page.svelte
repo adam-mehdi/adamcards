@@ -719,9 +719,9 @@
 		<div class="flex flex-row absolute bottom-0 left-4"	>
 				
 			</div>
-		<div class="dark:text-offwhite">
+		<!-- <div class="dark:text-offwhite">
 			{panel.textfield}
-		</div>
+		</div> -->
 	</div>
 
 </div>
