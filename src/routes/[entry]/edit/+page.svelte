@@ -11,13 +11,13 @@
 	import { flip } from 'svelte/animate'
 	import { page } from '$app/stores';
 	import { invoke } from '@tauri-apps/api/tauri';
-	import { onDestroy } from 'svelte';
-	import {clickOutside} from '$lib/actions/click_outside.js';
 	import configStore from '$lib/stores/configStore'
-	import Editor from '@tinymce/tinymce-svelte';
 	import Hint from 'svelte-hint';
-	import { preprocess, text_patterns, apiKey } from '$lib/editor';
-	// const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
+	// import { preprocess, text_patterns, apiKey } from '$lib/editor';
+
+	import { onMount, onDestroy } from 'svelte'
+	import TextfieldEditor from '$lib/TextfieldEditor.svelte'
+	
 
 
 	// contains state for the central panel on which cards are created
@@ -26,7 +26,7 @@
 		back: string,
 		prompt: string,
 		selected_deck: string,
-		lookup_deck: string,
+		display_all: boolean,
 		display_multi: boolean,
 		making_multi: boolean,
 		textfield: string,
@@ -86,7 +86,7 @@
 		"display_multi": $configStore.is_textfield,
 		"making_multi": $configStore.is_textfield,
 		"textfield": '',
-		"lookup_deck": '',
+		"display_all": false,
 		"selectDeckCreate": false,
 		"selected_deck": '',
 	};
@@ -196,10 +196,13 @@
 		panel.back = '';
 
 		// save all cards every card created if front/back
-		if (!panel.display_multi) 
+		if (!panel.display_multi) {
+			createdCardSwitch = !createdCardSwitch
 			await saveDecks()
+		}
 		numCreated += 1;
 	}
+	let createdCardSwitch = false;
 
 	async function createCardTextfield() {
 		let pairs = parse_textfield();
@@ -221,6 +224,7 @@
 
 		// save all cards created by textfield
 		await saveDecks()
+		createdCardSwitch = !createdCardSwitch
 		return;
 
 	}
@@ -230,10 +234,14 @@
 			return [];
 
 		let txt = panel.textfield;
-		txt = txt.replaceAll("&bull; ", "");
+		txt = txt.replaceAll("•", "");
 		let pairs: FieldPair[] = [];
 
-		let results = txt.match(/<.*?>*?(&rarr;)*?<\/.*>/g);
+		console.log("txt", txt)
+		// let results = txt.match(/<[^>]+>.*?».*?<\/[^>]+>/g);
+		let results = txt.match(/<(div|ul|li)>.*?».*?<\/(div|ul|li)>/g);
+		console.log("results", results)
+
 
 		if (results) {
 			for (let result of results) {
@@ -245,7 +253,7 @@
 				
 				
 				for (let line of result.split("<br>")) {
-					let card = line.replaceAll("&rarr;", "⟶").split("⟶");
+					let card = line.split("»");
 					if (card && card.length == 2) {
 						let front = `<div>${card[0].trim()}</div>`;
 						let back = `<div>${card[1].trim()}</div>`;
@@ -254,6 +262,7 @@
 				}
 			}
 		}
+		console.log("pairs", pairs)
 
 		return pairs;
 	}
@@ -277,7 +286,7 @@
 		if (fcard.front.toLowerCase().includes(prompt) ||
 			fcard.back.toLowerCase().includes(prompt)) {
 				let deck_fname = path2name(fcard.deck_name);
-				if (panel.lookup_deck == '' || deck_fname == panel.lookup_deck)
+				if (panel.display_all || deck_fname == panel.selected_deck)
 					return true;
 			}
 		return false;
@@ -402,73 +411,6 @@
 	}
 
 
-
-	let inline_conf = {
-		skin: isDarkMode ? "oxide-dark": "oxide",
-		referrer_policy: 'origin',
-		menubar: false,
-		toolbar: false,
-		content_style: 'img {object-fit: cover; width: 100%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
-		plugins: 'lists',
-		branding: false,
-		text_patterns: text_patterns,
-		paste_preprocess: preprocess
-	}
-
-	let conf = {
-		menubar: false,
-		referrer_policy: 'origin',
-		min_height: 75,
-		height: 150,
-		max_height: 200,
-		resize: true,
-		plugins: 'lists',
-		toolbar: false,
-		toolbar_location: "bottom",
-		fullscreen_native: true,
-		branding: false,
-		elementpath: false,
-		skin: isDarkMode ? 'oxide-dark' : "oxide",
-		content_css: isDarkMode ? "dark" : "",
-		content_style: 'img {object-fit: cover; max-width: 60%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
-		text_patterns: text_patterns,
-		paste_preprocess: preprocess
-	} 
-
-	let textfield_conf = {
-		menubar: false,
-		referrer_policy: 'origin',
-		min_height: 75,
-		height: 300,
-		max_height: 600,
-		resize: true,
-		plugins: 'fullscreen image lists',
-		// plugins: 'fullscreen image editimage lists',
-		toolbar: 'styles fontsize forecolor indent outdent bullist numlist paste fullscreen ',
-		font_size_formats: '8pt 10pt 12pt 14pt 16pt 24pt',
-		toolbar_location: "bottom",
-		fullscreen_native: true,
-		branding: false,
-		elementpath: false,
-		skin: isDarkMode ? 'oxide-dark' : "oxide",
-		content_css: isDarkMode ? "dark" : "",
-		content_style: 'img {object-fit: cover; max-width: 60%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
-		plugin: 'lists',
-		text_patterns: text_patterns,
- 		indent_use_margin: true,
-		forced_root_block : 'div',
-
-		// setup command to process math
-		// setup: (ed: any) => {
-		// 	// replace text inside of $$ with inline katex math
-		// 	ed.addCommand('math', (ui: any, v: any) => {
-		// 		ed.windowManager.alert('Hello world!! Selection: ' + ed.selection.getContent({ format: 'text' }));
-		// 	});
-		// },
-
-		paste_preprocess: preprocess
-	}
-
 	$: panel.selected_deck, filterCards()
 
 	
@@ -524,37 +466,39 @@
 			</div>
 
 		</div>
+		
+	
 
 	 <!-- central panel -->
 	<div class="mt-4 h-full flex flex-col justify-center items-center">
 		<!-- card fields -->
 		<div class="card flex flex-col h-full rounded-lg text-blacktext w-10/12 sm:w-[600px] md:w-[650px] lg:w-[800px] dark:text-whitetext">
 
+			{#key createdCardSwitch}
 			{#if !panel.display_multi}
 				<!-- front field -->
 				<div class="h-full max-h-80 mx-2 mb-1 border-l rounded-md border-columbia" >         
-				  <!-- md:w-[700px] lg:w-[800px] -->
-					<div class="h-full p-1 rounded-lg ">
-						<Editor {conf} inline={false} bind:value={panel.front} {apiKey}/>
-
+					<div class="h-full p-1 rounded-lg">
+						<TextfieldEditor bind:content={panel.front} autofocus={true}/>
 					</div>
 				</div>          
 
 				<!-- back field -->
 				<div class="h-full max-h-80 mx-2 border-l rounded-md mb-1 border-columbia" >         
 					<div class="h-full p-1 rounded-lg ">
-						<Editor {conf} inline={false} bind:value={panel.back} {apiKey}/>
+						<TextfieldEditor bind:content={panel.back} />
 					</div>
 				</div>          
 					
 
 			{:else}
 				<div class="h-full m-3 mb-1 text-inherit" >         
-					<div class="h-full p-1 rounded-lg ">
-						<Editor conf={textfield_conf} inline={false} bind:value={panel.textfield} {apiKey}/>
+					<div class="h-full p-1 rounded-lg">
+						<TextfieldEditor bind:content={panel.textfield} is_textfield={true}/>
 					</div>
 				</div>
 			{/if}
+			{/key}
 			
 			<!-- make this one bar -->
 			<div class="flex items-center justify-center top-[450px]">     
@@ -628,21 +572,16 @@
 					<label class="w-full flex flex-wrap items-stretch relative">
 						
 						<div class="w-4/5 mx-auto flex-row flex" >
-							<div style="text-align-last:center;" class="border-y border-r bg-white justify-center w-1/4 h-8 border-l rounded-l-lg relative z-30 items-center outline-columbia focus:outline-none outline-4 pr-2 pl-1 py-1 font-bold text-gray-500 transition-all border-gray-200 cursor-pointer group ease border-columbia overflow-hidden ring-columbia focus:ring duration-75">
-								<select bind:value={panel.lookup_deck}
-									class="text-columbia relative appearance-none w-full h-full z-30 inline-flex overflow-hidden font-bold text-gray-500 border-gray-200 cursor-pointer group ease ring-columbia focus:outline-none ring-offset-2 rounded-none rounded-l focus:ring duration-75"
-								>
-									<option value={""}>
-										All Decks
-									</option>
-			
-									{#each deck_fnames as deck_fname}
-										<option value={deck_fname}>
-											{deck_fname}
-										</option>
-									{/each}	
-								</select>
-							</div>
+							<Hint placement="bottom" text="Show All Decks">
+								<div style="text-align-last:center;" class="border-y border-r bg-white justify-center w-12 h-8 border-l rounded-l-lg relative z-30 items-center outline-columbia focus:outline-none outline-4 pl-1 font-bold text-gray-500 transition-all border-gray-200 cursor-pointer group ease border-columbia overflow-hidden duration-75">
+										<div class="focus:ring cursor-pointer ring-columbia">
+											<input
+											class="cursor-pointer ml-2 mr-4 ring-columbia focus:ring mt-2 h-4 w-4  {panel.display_all ? "" : ""}"
+											type=checkbox bind:checked={panel.display_all}>
+
+										</div>
+								</div>
+							</Hint>
 
 
 
@@ -651,12 +590,12 @@
 							class="pl-2  h-8 placeholder:font-italic border-y border-r rounded-r-lg w-full border-columbia py-2 pr-10 focus:outline-none"
 							placeholder=""/>
 							
-							<button on:click={filterCards} on:keydown={filterCards} class="absolute right-2 sm:right-8 lg:right-14 mr-10 top-1 outline-columbia focus:outline outline-4 outline-offset-2 transition-all active:bg-columbia ring-columbia focus:outline-none ring-offset-2 rounded-r focus:ring duration-75">
+							<!-- <button on:click={filterCards} on:keydown={filterCards} class="absolute right-2 sm:right-8 lg:right-14 mr-10 top-1 outline-columbia focus:outline outline-4 outline-offset-2 transition-all active:bg-columbia ring-columbia focus:outline-none ring-offset-2 rounded-r focus:ring duration-75">
 								<svg class="h-6 w-6 fill-none stroke-columbia"
 									stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607zM10.5 7.5v6m3-3h-6"></path>
 								</svg>
-							</button>
+							</button> -->
 
 						</div>
 					</label>
@@ -688,15 +627,15 @@
 
 					<!-- card fields -->
 						
-						<div class="ml-3 mr-0 w-1/2 m-3 rounded-lg border-l border-columbia border-spacing-4 px-4 py-2">
-							<Editor bind:value={card.front} inline={true} conf={inline_conf} {apiKey}/>
+						<div class="ml-3 mr-0 w-1/2 m-3 rounded-lg border-l border-columbia border-spacing-4 px-2 py-2">
+							<TextfieldEditor bind:content={card.front} is_gallery={true}/>
 						</div>
 
 						<div class="border-r-2 opacity-30 border-columbia"></div>
 
 						<!-- <div class="card-hr mt-5" /> -->
 						<div class="ml-0 mr-4 w-1/2 m-3 border-r rounded-lg border-columbia border-spacing-4 px-4 py-2">
-							<Editor bind:value={card.back} inline={true} conf={inline_conf} {apiKey}/>
+							<TextfieldEditor bind:content={card.back} is_gallery={true}/>
 						</div>
 
 						<span 

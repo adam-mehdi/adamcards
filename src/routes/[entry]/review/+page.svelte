@@ -7,11 +7,9 @@
 	import { onDestroy } from 'svelte';
 	import configStore from '$lib/stores/configStore'
 	import Hint from 'svelte-hint';
-	import Editor from '@tinymce/tinymce-svelte';
 	import { fade } from 'svelte/transition';
-	import { preprocess, text_patterns, apiKey } from '$lib/editor';
+	import TextfieldEditor from '$lib/TextfieldEditor.svelte'
 
-	// const scriptSrc = "/node_modules/tinymce/tinymce.min.js";
 	
 
 	// write buf_size - min_history every time
@@ -106,8 +104,7 @@
 		card_is_revealed: boolean,      // back field is revealed
 		session_is_finished: boolean,   // review session is completed
 		is_started: boolean, 			// false if session has not started yet
-		userAnswer1: string,
-		userAnswer2: string,
+		userAnswer: string,
 		// id2idx: Map<number, Card>,
 		buf: CardBuffer,
 	}
@@ -127,8 +124,7 @@
 		card_is_revealed: false,
 		session_is_finished: false,
 		is_started: false,
-		userAnswer1: '',
-		userAnswer2: '',
+		userAnswer: '',
 		buf: { 
 			data: [], 
 			idx: -1 
@@ -152,8 +148,7 @@
 			card_is_revealed: false,
 			session_is_finished: false,
 			is_started: false,
-			userAnswer1: '',
-			userAnswer2: '',
+			userAnswer: '',
 			buf: {data: [], idx: -1}
 		}
 
@@ -193,8 +188,7 @@
 		card_drawn = false;
 		// do not try to draw cards if session is done
 		state.card_is_revealed = false;
-		state.userAnswer1 = '';
-		state.userAnswer2 = '';
+		state.userAnswer = '';
 		if (state.session_is_finished)
 			return;
 
@@ -225,8 +219,7 @@
 		state.stacks.studying.push(study_card);
 
 		// re-render the DOM
-		state.userAnswer1 = '';
-		state.userAnswer2 = '';
+		state.userAnswer = '';
 		isUserAnswer1 = !isUserAnswer1;
 		card_drawn = true;
 		state.stacks = state.stacks;
@@ -323,8 +316,7 @@
 		let stack = get_stack_after(prev_card);
 		state.stacks.studying.push(stack.pop()!);
 
-		state.userAnswer1 = '';
-		state.userAnswer2 = '';
+		state.userAnswer = '';
 		isUserAnswer1 = !isUserAnswer1;
 		
 		// re-render the DOM
@@ -357,8 +349,7 @@
 		let stack_before = get_stack_before(curr_card);
 		state.stacks.studying.push(stack_before.pop()!);
 
-		state.userAnswer1 = '';
-		state.userAnswer2 = '';
+		state.userAnswer = '';
 		isUserAnswer1 = !isUserAnswer1;
 
 		// re-render the DOM
@@ -407,6 +398,10 @@
 		state.session_is_finished = true;
 	}
 
+	function revealCard() {
+		state.card_is_revealed = true;
+	}
+
 
 	function onKeyDown(e: KeyboardEvent) {
 
@@ -430,13 +425,7 @@
 			if (!state.is_started) {
 				state.is_started = true;
 				getNextCard();
-			} else {
-				let idx = state.userAnswer1.lastIndexOf("\n")
-				state.userAnswer1 = state.userAnswer1.slice(0, idx)
-				idx = state.userAnswer2.lastIndexOf("\n")
-				state.userAnswer2 = state.userAnswer2.slice(0, idx)
-				state.card_is_revealed = true;
-			}
+			} 
 		}
 
 		// allow typing in user answer bar
@@ -460,34 +449,11 @@
 
 	}
 
-
-	let inline_conf_answer = {
-		skin: isDarkMode ? "oxide-dark": "oxide",
-		referrer_policy: 'origin',
-		menubar: false,
-		toolbar: false,
-		content_style: 'img {object-fit: cover; width: 100%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
-		plugins: 'lists',
-		branding: false,
-		auto_focus: true,
-		text_patterns: text_patterns,
-		paste_preprocess: preprocess
+	// let okay_button: HTMLElement;
+	function init(el: any){
+		el.focus()
 	}
 
-	let inline_conf = {
-		skin: isDarkMode ? "oxide-dark": "oxide",
-		referrer_policy: 'origin',
-		menubar: false,
-		toolbar: false,
-		content_style: 'img {object-fit: cover; width: 100%; border-radius: 5%; display: block; margin-left: auto; margin-right: auto;}',
-		plugins: 'lists',
-		branding: false,
-		text_patterns: text_patterns,
-		paste_preprocess: preprocess
-	}
-
-
-	
 
 	
 	
@@ -547,7 +513,7 @@
 
 						            		<!-- front field -->
 						            		<div class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
-												<Editor bind:value={state.buf.data[state.buf.idx].card.fcard.front} inline={true} conf={inline_conf} {apiKey}/>     
+												<TextfieldEditor bind:content={state.buf.data[state.buf.idx].card.fcard.front}/>
 						            		</div>          
 
 										<!-- rule separating front and back fields -->
@@ -562,11 +528,7 @@
 						            		<!-- back field -->
 						            		<div class="h-1/2 mx-8 mt-6 mb-8 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
 						            			<!-- md:w-[700px] lg:w-[800px] -->
-												<Editor 
-													bind:value={state.buf.data[state.buf.idx].card.fcard.back} 
-													inline={true} conf={inline_conf}
-													{apiKey}
-												/>     
+												<TextfieldEditor bind:content={state.buf.data[state.buf.idx].card.fcard.back}/>
 											</div>          
 						            			
 
@@ -583,7 +545,7 @@
 						            			<button
 						            				on:click={() => handleResponse(2)}
 													on:keypress={() => handleResponse(2)}
-						            				autofocus
+													autofocus
 						            				class="h-5 w-1/3 relative z-40 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-x border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
 						            				<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
 						            				<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
@@ -604,34 +566,27 @@
 
 									<form class="w-full outline-none">
 										<div class="w-full flex flex-wrap items-stretch relative mb-3">
-											<span class="absolute left-1/4 inset-y-0 flex items-center pl-2">
-											<Hint placement="bottom" text="Type your answer here">
-												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" 
-													class="w-6 h-6 dark:invert ">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-												  </svg>
-											</Hint>
-												  
-											</span>
+											
 											 
-											<div class = "w-1/2 h-full mx-auto dark:text-whitetext rounded-md border pl-11 pt-1 pb-2 pr-1 outline-none cursor-text">
-												<div id="user-answer-bar" class="h-full pt-1 pr-1 rounded-lg ring-columbia focus:outline-none focus:ring duration-75">
-													{#if isUserAnswer1}
-													<Editor bind:value={state.userAnswer1} inline={true} conf={inline_conf_answer} {apiKey}/>
-													{:else}
-													<Editor bind:value={state.userAnswer2} inline={true} conf={inline_conf_answer} {apiKey}/>
-													{/if}
+											<div class = "w-2/3 h-full mx-auto dark:text-whitetext rounded-md border pl-3 pt-1 pb-2 pr-12 outline-none cursor-text">
+												<div id="user-answer-bar" class=" h-full pt-1 pr-1 rounded-lg ring-columbia focus:outline-none focus:ring duration-75">
+													<TextfieldEditor bind:content={state.userAnswer} autofocus={true} is_answerbar={true}/>
 												</div>
 
-												<!-- <input type="text"
-												id="user-answer-bar"
-												bind:value={state.userAnswer} 
-												autofocus
-												use:focus
-												class="cursor-text rounded-lg h-8 placeholder:font-italic border w-full border-columbia py-2 pl-10 pr-4 focus:outline-none"
-												placeholder="Your Answer"  /> -->
-					
 											</div>
+
+											<span class="right-1/4 absolute inset-y-0 flex items-center pt-1 -mr-10 lg:-mr-12">
+													<Hint placement="bottom" text="Reveal card">
+														<button on:click={revealCard} class="focus:outline-none focus:ring ring-columbia ring-offset-8 rounded-sm mr-2 ">
+														<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" 
+															class="w-6 h-6 dark:invert ">
+															<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+														</svg>
+												</button>
+													</Hint>
+
+													  
+												</span>
 										</div>
 									</form>
 
@@ -642,8 +597,8 @@
 					{/if}
 				</div>
 			{:else}
-				<h3 class="text-center font-bold text-columbia text-4xl">Well done, Cardwegian</h3>
-				<h3 class="text-center font-mono font-bold text-columbia text-lg">You've completed today's quota</h3>
+				<!-- <h3 class="text-center font-bold text-columbia text-4xl">Well done, Cardwegian</h3>
+				<h3 class="text-center font-mono font-bold text-columbia text-lg">You've completed today's quota</h3> -->
 			{/if}
 		{/if}
 

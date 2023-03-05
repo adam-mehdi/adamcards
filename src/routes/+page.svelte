@@ -143,7 +143,7 @@
 		
 		<div class="flex justify-between mb-10 mx-10">
 
-			<h3 class="text-center text-columbia-dark dark:text-columbia font-bold text-2xl mt-5">Cardway</h3>
+			<h3 class="text-center text-columbia-dark dark:text-columbia font-bold text-2xl mt-5 font-serif">Trunk</h3>
 
 			<!-- dark mode button -->
 			<div class="fled justify-evenly mt-5 lg:mr-5">

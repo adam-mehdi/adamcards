@@ -572,7 +572,10 @@ fn rewrite_decks(root: &PathBuf, deadline_name: &String) {
 
             let num_boxes = num_boxes + new_boxes;
             let deck_cfg = path2string(&deck_cfg);
+            File::create(&deck_cfg).expect("failed to erase"); // erase contents from file
 
+            dbg!(&deck_name);
+            dbg!(&deadline);
             // append new values to deck config
             append_val_cfg(&deck_cfg, "num_boxes", num_boxes);
             append_val_cfg(&deck_cfg, "days_to_go", &days_to_go);
