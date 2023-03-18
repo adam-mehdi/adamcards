@@ -13,7 +13,7 @@
     export let is_textfield = false;
     export let is_gallery = false;
     export let is_answerbar = false;
-    let min_height = is_textfield ? "200px" : "50px";
+    let min_height = is_textfield ? "200px" : "75px";
     min_height = is_gallery ? "25px" : min_height;
     let max_height = is_textfield ? "600px" : "300px"
     max_height = is_answerbar ? "100px" : max_height;
@@ -96,7 +96,7 @@
 
   </script>
   
-<div class="rounded-lg p-2 cursor-text focus-within:ring  ring-columbia transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
+<div class="rounded-lg p-2 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
     <!-- on:input={updateContent}  -->
   <div 
     bind:this={element} 

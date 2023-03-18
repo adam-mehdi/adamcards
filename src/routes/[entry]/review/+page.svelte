@@ -10,60 +10,30 @@
 	import { fade } from 'svelte/transition';
 	import TextfieldEditor from '$lib/TextfieldEditor.svelte'
 
-	
 
 	// write buf_size - min_history every time
 	let isDarkMode = $configStore.is_dark_mode;
-	let windowHeight = 0;
-	$: getStackHeight = () => windowHeight > 650 ? Math.floor(windowHeight / 30) : Math.floor(windowHeight / 50);
-
 	
-
-    const BUF_SIZE = 5;
-	const MOVE_DURATION = 50;
-                                                                                 
-    const [send, receive] = crossfade({                                            
-        fallback(node, params) {                                                   
-            const style = getComputedStyle(node);                                  
-            const transform = style.transform === 'none' ? '' : style.transform;
-                                                                                   
-            return {                                                               
-                duration: 600,                                                     
-                easing: quintOut,                                                  
-                css: t => `                                                        
-                    transform: ${transform} scale(${t});                           
-                    opacity: ${t}                                                  
-                `                                                                  
-            };                                                                     
-        }                                                                          
-    });
-
 	// FrontendCard contains properties that can be edited in the frontend
-	interface FrontendCard {
+	interface Card {
 		id: number,
 		front: string,
-		back: string,
+		back: string
+	}
+
+	interface ReviewCard {
+		stack_before: string, // can be "new" | "review" | "done"
 		deck_name: string,
+		card: Card
+	}
+	
+	// review Quota
+	interface Quota {
+		new_left: number,
+		review_left: number,
+		num_progressed: number
 	}
 
-	// MetaData contains properties that are read-only fron the frontend
-	interface MetaData {
-		box_pos: number,
-	}
-
-
-	// Card tracks both frontend fields and data for backend algorithm and analysis
-	interface Card {
-		fcard: FrontendCard,
-		md: MetaData
-	}
-
-	/**
-	 * Data for animating cards
-	 */
-
-	// each number refers to one animated card on the screen
-	// cards are moved on screen by moving them between arrays
 	interface AnimatedCardStacks {
 		new: number[],
 		review: number[],
@@ -73,333 +43,191 @@
 
 
 	/**
-	 * Buffer for cards (serves as undo stack)
-	 */ 
-
-	interface CardBuffer {
-		data: ReviewSessionCard[],
-		idx: number,
-	}
-
-	interface ReviewSessionCard {
-		card: Card,
-		stack_before: "new" | "review",
-		stack_after: "new" | "review" | "done" | null,
-		user_response: number | null,
-		box_pos_delta:  number | null,
-	}
-
-	// Quotas summed over all decks
-	interface SummedQuotas {
-		new_left: number,
-		review_left: number,
-		num_progressed: number,
-	}
-
-	/**
 	 * State for review session
 	 */
-	interface SessionState {
-		stacks: AnimatedCardStacks,
-		card_is_revealed: boolean,      // back field is revealed
-		session_is_finished: boolean,   // review session is completed
-		is_started: boolean, 			// false if session has not started yet
-		userAnswer: string,
-		// id2idx: Map<number, Card>,
-		buf: CardBuffer,
-	}
-
-
+	let stacks: AnimatedCardStacks;
+	// let num_progressed_init: number // make num_progressed stack reset between sessions
+	let cardIsRevealed: boolean = false;   // back field is revealed
+	let sessionStarted: boolean = false; 	 // false if session has not started yet
+	let sessionFinished: boolean = false;   // review session is completed
+	let userAnswer: string = '';
+	// let id2idx: Map<number, Card>,
+	let currCard: ReviewCard;
+	const deadlineId: number = parseInt($page.params.entry);
 
 	
 
 	// initializes frontend and backend state
-	let state: SessionState = {
-		stacks: { 
-			new: [],
-			review: [],
-			done: [],
-			studying: []
-		},
-		card_is_revealed: false,
-		session_is_finished: false,
-		is_started: false,
-		userAnswer: '',
-		buf: { 
-			data: [], 
-			idx: -1 
-		},
-	};
 	async function initState() {
-		let entry = $page.params.entry;
-		let quotas: SummedQuotas = await invoke('init_review_session', { "entryName": entry });
+		let quota: Quota = await invoke('init_review_session', { deadlineId });
 
 
 		let range = (n: number) => Array.from(Array(n).keys());
-		let stacks: AnimatedCardStacks = {
-			new: range(quotas.new_left),
-			review: range(quotas.review_left).map(x => x + quotas.new_left),
-			done: range(quotas.num_progressed).map(x => x + quotas.review_left + quotas.new_left),
+		stacks = {
+			new: range(quota.new_left),
+			review: range(quota.review_left).map(x => x + quota.new_left),
+			done: range(quota.num_progressed).map(x => x + quota.review_left + quota.new_left),
 			studying: [],
 		}
-
-		state = {
-			stacks,
-			card_is_revealed: false,
-			session_is_finished: false,
-			is_started: false,
-			userAnswer: '',
-			buf: {data: [], idx: -1}
-		}
-
-		// fill card buffer to begin review session
-		await drawCards();
 	}
 	initState()
 
-	
-	async function drawCards() {
-		
-		// draw card from a backend deck
-		const cards: Card[] = await invoke('draw_cards', { "numCards": BUF_SIZE });
 
-		// put cards into card buffer
-		let rcards: ReviewSessionCard[] = [];
-		for (let card of cards) {
-			rcards.push({
-				card: card,
-				stack_before: card.md.box_pos == 0 ? "new" : "review",
-				stack_after: null,
-				user_response: null,
-				box_pos_delta: null
-			});
-		}
-
-		// need to assign idxs to cards here TODO
-
-		state.buf.data = rcards;
-		state.buf.idx = -1;	
-		
-	}
-
-	let card_drawn = false;
-	let isUserAnswer1 = true;
 	async function getNextCard() {
-		card_drawn = false;
-		// do not try to draw cards if session is done
-		state.card_is_revealed = false;
-		state.userAnswer = '';
-		if (state.session_is_finished)
-			return;
+		cardIsRevealed = false;
 
-		// draw cards if reached the end of the card state.buffer
-		if (state.buf.idx == state.buf.data.length - 1) {
-			await drawCards();
-		}
-		state.buf.idx += 1;
-
-		// finish session if no more cards to review
-		if (state.buf.data.length == 0) {
-			cleanup();
-			console.error("CLEANING UP");
-			return;
+		let card: ReviewCard | null = await invoke("get_next_card", {})
+		
+		// if no card was returned, session is finished
+		if (!card) {
+			sessionFinished = true;
+			return
 		}
 
-		let curr_card = state.buf.data[state.buf.idx];
+		currCard = card
 
 		// remove card from proper stack and decrease quota
-		let stack = curr_card.stack_before == "new" ? state.stacks.new 
-			: state.stacks.review;
+		let stack = card.stack_before == "new" ? stacks.new : stacks.review;		
+		if (stack.length == 0) {
+			console.error("taking card out of an empty stack");
+		}
 
-		
-		if (stack.length <= 0)
-			return;
-
-		const study_card: undefined | number = stack.pop()!;
-		state.stacks.studying.push(study_card);
+		const study_card: number = stack.pop()!;
+		stacks.studying.push(study_card);
 
 		// re-render the DOM
-		state.userAnswer = '';
-		isUserAnswer1 = !isUserAnswer1;
-		card_drawn = true;
-		state.stacks = state.stacks;
-
-
+		userAnswer = '';
+		stacks = stacks;
 	}
 
 
-	let isFocusFire = true;
-	async function handleResponse(response: number) {
+	let okayCanFire = false;
+	async function handleResponse(score: number) {
 		// prevent "Okay" from automatically firing		
-		if (response == 2 && isFocusFire) {
-			isFocusFire = false;
+		if (score == 0 && !okayCanFire) {
+			okayCanFire = true;
 			return;
 		}
-		isFocusFire = true;
+		okayCanFire = false;
 
-
-		if (state.buf.idx < 0 || state.buf.data.length <= state.buf.idx) {
-			console.error(state.buf, "producing a type error");
-		}
-
-		let buf_card = state.buf.data[state.buf.idx];
-		buf_card.user_response = response - 2;
-
-		// compute box_pos_delta
-		let box_pos_delta = response - 2;
-		if (box_pos_delta == -1 && buf_card.card.md.box_pos <= 1)
-			// no moving from review to new nor from new to negative
-			box_pos_delta = 0;
-
-		// move card box position
-		buf_card.card.md.box_pos += box_pos_delta;
-		buf_card.box_pos_delta = box_pos_delta;
-
-		// find the stack where the card ends up
-		if (box_pos_delta == 1) {
-			buf_card.stack_after = "done";
-		} else {
-			buf_card.stack_after = buf_card.stack_before;
-		}
+		let stack_after: string = await invoke("record_response", { score, userAnswer, "card": currCard })
 
 		// put the card in that stack
-		let new_stack = get_stack_after(buf_card);
+		let new_stack = get_new_stack(stack_after);
 
-		const studying_id = state.stacks.studying.pop()!;
-		let insert_idx = Math.floor(new_stack.length / 2);
+		const studying_id = stacks.studying.pop()!;
+		let insert_idx = stack_after == "done" ? new_stack.length : Math.floor(new_stack.length / 2);
 		new_stack.splice(insert_idx, 0, studying_id);
-
 		// id2idx.set(buf_card.card.id, study_idx);
 
-		// save and clear buffer if it is full
-		if (state.buf.idx == state.buf.data.length - 1) {
-			await writeBuffer();
+		if (new_stack.length == 1) {
+			cardIsRevealed = false;
+			stacks = stacks;
+			await sleep(900); // hack to avoid frontend rendering bug
+			
+			stacks.studying.push(new_stack.pop()!)
+			stacks = stacks
+			return
 		}
 
-		// get next card from the buffer
-		await getNextCard() // HAPPENDS IN HERE
-		state.stacks = state.stacks;
+		stacks = stacks;
+		getNextCard() 
+		num_forward += 1;
 	}
+
+	function sleep(ms: number) {
+		return new Promise(resolve => setTimeout(resolve, ms));
+	}
+
 
 	// undo getNextCard, and reverse quotas state
-	function getLastCard() {
-		// return if buffer has not been initalized & session not started
-		if (!state.is_started)
+	interface CardResults {
+		stack_after: string;
+		user_answer: string;
+		card: ReviewCard;
+	}
+
+	let num_forward = 0;
+	let num_back = 0;
+	async function getLastCard() {
+		if (!sessionStarted || sessionFinished)
+			return
+
+		// return if no last card recorded
+		let results: CardResults | null = await invoke("get_last_card", {})
+		if (!results)
 			return;
 
-		// get current card being displayed
-		let curr_card = state.buf.data[state.buf.idx];
+		// put card currently being studied into stack before
+		let currCardStack = get_new_stack(currCard.stack_before);
+		let studying: number = stacks.studying.pop()!;
+		currCardStack.push(studying);
+		stacks = stacks;
 
+		// draw last card from stack it ended up in
+		currCard = results.card
+		let lastCardStack = get_new_stack(results.stack_after);
+		let lastCardId = lastCardStack.pop()!;
+		stacks.studying.push(lastCardId);
+		stacks = stacks
 
-		// no more cards to review if at the start of the buffer
-		if (state.buf.idx == 0) {
-			return;
-		}
-		
-		// put card currently being studied back into the stack it was in
-		let last_stack = get_stack_before(curr_card);
-		let studying = state.stacks.studying.pop()!;
-		last_stack.push(studying!);
-
-		// re-render the DOM
-		state.stacks = state.stacks;
-
-		// no more cards to review if at the start of the buffer
-		if (state.buf.idx == 0) {
-			return;
-		}
-		// get previous card from the stack it ended up in and put it on display
-		state.buf.idx -= 1 
-		let prev_card = state.buf.data[state.buf.idx];
-		// can be progressed
-
-		let stack = get_stack_after(prev_card);
-		state.stacks.studying.push(stack.pop()!);
-
-		state.userAnswer = '';
-		isUserAnswer1 = !isUserAnswer1;
-		
-		// re-render the DOM
-		state.stacks = state.stacks;
+		// show user answer again
+		userAnswer = results.user_answer;
+		stacks = stacks
+		num_forward -= 1
+		num_back += 1
 		
 	}
 
-	// go forward in the buffer, assuming the already saved user responses
-	function undoGetLastCard() {
-		// return if buffer has not been initalized & session not started
-		if (!state.is_started)
-			return;
+	async function undoGetLastCard() {
+		if (!sessionStarted || sessionFinished)
+			return
+
+		let results: CardResults | null = await invoke("undo_get_last_card", {})
+		if (!results) {
+			getNextCard();
+			return
+		}
 		
+		// put card currently being studied into stack after
+		let currCardStack = get_new_stack(results.stack_after);
+		let studying: number = stacks.studying.pop()!;
+		currCardStack.push(studying);
+		stacks = stacks;
 
-		let prev_card = state.buf.data[state.buf.idx];
-		// can only undo if current card being studied has been reviewed
-		if (prev_card === undefined || !prev_card.stack_after)
-			return;
-		
 
-		let stack_after = get_stack_after(state.buf.data[state.buf.idx]);
-		stack_after.push(state.stacks.studying.pop()!);
+		// draw next card from stack before
+		let nextCardStack = get_new_stack(results.card.stack_before)
+		let nextCardId = nextCardStack.pop()!
+		stacks.studying.push(nextCardId)
+		stacks = stacks
 
-		// re-render the DOM
-		state.stacks = state.stacks;
-		
-		state.buf.idx += 1;
-		let curr_card = state.buf.data[state.buf.idx];
-
-		let stack_before = get_stack_before(curr_card);
-		state.stacks.studying.push(stack_before.pop()!);
-
-		state.userAnswer = '';
-		isUserAnswer1 = !isUserAnswer1;
-
-		// re-render the DOM
-		state.stacks = state.stacks;
-		state.buf = state.buf;
+		// show user answer again
+		userAnswer = results.user_answer;
+		stacks = stacks
+		num_forward += 1
+		num_back -= 1
 	}
 
 	// get stack to put the card into, where it will end up after a response
-	function get_stack_after(buf_card: ReviewSessionCard): number[] {
+	function get_new_stack(stack: string): number[] {
 		let new_stack;
-		if (buf_card.stack_after == "new") { 
-			new_stack = state.stacks.new; 
-		} else if (buf_card.stack_after == "review") { 
-			new_stack = state.stacks.review; 
+		if (stack == "new") { 
+			new_stack = stacks.new; 
+		} else if (stack == "review") { 
+			new_stack = stacks.review; 
+		} else if (stack == "done") {
+			new_stack = stacks.done;
 		} else {
-			new_stack = state.stacks.done;
+			console.error(stack, "not a stack");
+			return [];
 		}
 		return new_stack;
 	}
 
-	// get the stack to pop the card out of
-	function get_stack_before(buf_card: ReviewSessionCard): number[] {
-		return buf_card.stack_before == "new" 
-			? state.stacks.new 
-			: state.stacks.review;
-	}
-
-	async function writeBuffer() {
-		let summedQuotas: SummedQuotas = {
-			"new_left": state.stacks.new.length,
-			"review_left": state.stacks.review.length,
-			"num_progressed": state.stacks.done.length,
-		}
-
-		// TODO: remove summedQuotas; it is just used to do an assert
-		await invoke("save_card_buffer", 
-			{"rcards": state.buf.data, "squotas": summedQuotas});
-		state.buf = {data: [], idx: -1};
-	}
-	
-	// called when no more cards or user exits
-	onDestroy(cleanup);
-	async function cleanup() {
-		if (!state.session_is_finished)
-			await invoke('cleanup', { "cardBuffer": state.buf });
-		state.session_is_finished = true;
-	}
 
 	function revealCard() {
-		state.card_is_revealed = true;
+		cardIsRevealed = true;
 	}
 
 
@@ -415,47 +243,49 @@
 			return;
 
 		// go back or forward through the buffer given user responses
-		if (e.key == "<")
+		if (e.key == "<TODO")
 			getLastCard();
-		else if (e.key == ">") 
+		else if (e.key == ">TODO") 
 			undoGetLastCard(); 
 		
 		// session starts or back is revealed if user presses enter
 		if (e.key == "Enter" && activeElement != bar) {
-			if (!state.is_started) {
-				state.is_started = true;
+			if (!sessionStarted) {
+				sessionStarted = true;
 				getNextCard();
 			} 
 		}
-
-		// allow typing in user answer bar
-		// if (activeElement == bar)
-		// 	return;
-		
-		
 		
 	} 
+
 			
-	function path2name(deck_path: string): string {
-		let ancestors = deck_path.split("~~");
-		// return ancestors[ancestors.length - 2] + "/" + ancestors[ancestors.length - 1];
-		return ancestors[ancestors.length - 1];
-	}
 
+	/**
+	 * Code for animating cards
+	 */
 
-	function log(x: any): boolean {
-		console.log(x);
-		return false;
+	// each number refers to one animated card on the screen
+	// cards are moved on screen by moving them between arrays
 
-	}
+	let windowHeight = 0;
+	$: getStackHeight = () => windowHeight > 650 ? Math.floor(windowHeight / 30) : Math.floor(windowHeight / 50);
 
-	// let okay_button: HTMLElement;
-	function init(el: any){
-		el.focus()
-	}
-
-
-	
+	const MOVE_DURATION = 50;
+    const [send, receive] = crossfade({                                            
+        fallback(node, params) {                                                   
+            const style = getComputedStyle(node);                                  
+            const transform = style.transform === 'none' ? '' : style.transform;
+                                                                                   
+            return {                                                               
+                duration: 600,                                                     
+                easing: quintOut,                                                  
+                css: t => `                                                        
+                    transform: ${transform} scale(${t});                           
+                    opacity: ${t}                                                  
+                `                                                                  
+            };                                                                     
+        }                                                                          
+    });
 	
 
 </script>
@@ -468,12 +298,11 @@
 <div class={isDarkMode ? "dark" : ""}>
 <div class="bg-offwhite dark:bg-offblack h-screen text-blacktext ">
 	<div class="{windowHeight > 450 ? "h-5" : "h-2"}"></div>
-	<div>
 
 	<!-- bar at top -->
 		<div class="ml-8 h-16 w-6 ">
 			<a href="/" class="ring-columbia focus:outline-none focus:ring duration-75">
-				<div on:click={cleanup} on:keypress={cleanup} class="fled justify-evenly w-6 ">
+				<div class="fled justify-evenly w-6 ">
 					<svg fill="highlight" class="flex-none h-6 w-6 cursor-pointer ring-columbia focus:outline-none focus:ring duration-75 rounded-md" 
 						viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
 						<path clip-rule="evenodd" fill-rule="evenodd" d="M9.293 2.293a1 1 0 011.414 0l7 7A1 1 0 0117 11h-1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-3a1 1 0 00-1-1H9a1 1 0 00-1 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-6H3a1 1 0 01-.707-1.707l7-7z"></path>
@@ -485,136 +314,117 @@
 
 		<div class=" {windowHeight > 450 ? "space-y-32" : "space-y-8"}">
 
-		{#if !state.is_started}
-			<h3 class="text-center font-bold text-columbia text-4xl">Welcome, Cardwegian</h3>
+		{#if !sessionStarted && stacks}
+			<!-- <h3 class="text-center font-bold text-columbia text-4xl">Welcome, </h3> -->
 			<h3 class="text-center font-mono font-bold text-columbia text-xl">Hit ENTER to begin</h3>
+			<h3 class="text-center font-serif font-semibold text-columbia text-md">With {stacks.new.length} new and {stacks.review.length} review cards, today's practice will take {(stacks.new.length * 12 + stacks.review.length * 5) / 60} minutes.</h3>
 
 
-		{:else} <!-- show card field if session has started, but not finished -->
-			{#if !state.session_is_finished}
+		{:else if sessionStarted} <!-- show card field if session has started, but not finished -->
+			{#if !sessionFinished}
 
+				<!-- {#key card_drawn}  -->
+				<div class='w-1/2 mx-auto'>
+					{#each stacks.studying as id (id)}
 
-				<div class=''>
-					<!-- && state.stacks.studying !== null} -->
-					{#if card_drawn} 
-					<div class='w-1/2 mx-auto'>
-						{#each state.stacks.studying as id (id)}
-						
-							<div class="card-container"
-								in:receive="{{key: id}}"
-								out:send="{{key: id}}"
-								animate:flip="{{duration: 50}}">
-						            <!-- card fields -->
-						            <div class="{!isDarkMode ? "card" : ""} dark:border-x dark:border-y dark:border-opacity-50 border-columbia border-opacity-50 flex flex-col h-full rounded-lg text-blacktext dark:bg-slate-700 dark:text-offwhite">
-				
-						            	<div class="opacity-50 font-serif ml-4">
-						            		{path2name(state.buf.data[state.buf.idx].card.fcard.deck_name)}
-						            	</div>
+						<div class="card-container"
+							in:receive="{{key: id}}"
+							out:send="{{key: id}}"
+							animate:flip="{{duration: 50}}">
 
-						            		<!-- front field -->
-						            		<div class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
-												<TextfieldEditor bind:content={state.buf.data[state.buf.idx].card.fcard.front}/>
-						            		</div>          
+								<div class="{!isDarkMode ? "card" : ""} dark:border-x dark:border-y dark:border-opacity-50 border-columbia border-opacity-50 flex flex-col h-full rounded-lg text-blacktext dark:bg-slate-700 dark:text-offwhite">
+			
+									<div class="opacity-50 font-serif ml-4">{currCard.deck_name}</div>
 
-										<!-- rule separating front and back fields -->
-										<div class="border-t border-1 border-opacity-50 border-columbia" />   
+									<!-- front field -->
+									<div class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
+										<TextfieldEditor bind:content={currCard.card.front}/>
+									</div>          
 
-										{#if !state.card_is_revealed}
-						            		<div class="mx-8 my-6 text-inherit" >    
-						            		</div>          
+									<!-- rule separating front and back fields -->
+									<div class="border-t border-1 border-opacity-50 border-columbia" />   
 
-
-						            	{:else}
-						            		<!-- back field -->
-						            		<div class="h-1/2 mx-8 mt-6 mb-8 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
-						            			<!-- md:w-[700px] lg:w-[800px] -->
-												<TextfieldEditor bind:content={state.buf.data[state.buf.idx].card.fcard.back}/>
-											</div>          
-						            			
-
-											<!-- answer bar -->
-						            		<div class="flex items-center justify-center top-[450px]">     
-						            			<button 
-						            				on:click={() => handleResponse(1)}
-						            				class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-						            				<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
-						            				<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
-						            				Hard 
-						            			</button>
-
-						            			<button
-						            				on:click={() => handleResponse(2)}
-													on:keypress={() => handleResponse(2)}
-													autofocus
-						            				class="h-5 w-1/3 relative z-40 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-x border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-						            				<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
-						            				<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
-						            				Okay
-						            			</button>      
-
-						            			<button	
-						            				class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-r border-l border-columbia rounded-br-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-0"
-						            				on:click={() => handleResponse(3)} >
-						            				<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
-						            				<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
-						            				Good
-						            			</button>    
-						            		</div>       
-						            	{/if}
-
-						            </div>  
-
-									<form class="w-full outline-none">
-										<div class="w-full flex flex-wrap items-stretch relative mb-3">
+									<!-- back field -->
+									{#if !cardIsRevealed}
+										<div class="mx-8 my-6 text-inherit"></div>          
+									{:else}
+										<div class="h-1/2 mx-8 mt-6 mb-8 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
+											<TextfieldEditor bind:content={currCard.card.back}/>
+										</div>          
 											
-											 
-											<div class = "w-2/3 h-full mx-auto dark:text-whitetext rounded-md border pl-3 pt-1 pb-2 pr-12 outline-none cursor-text">
-												<div id="user-answer-bar" class=" h-full pt-1 pr-1 rounded-lg ring-columbia focus:outline-none focus:ring duration-75">
-													<TextfieldEditor bind:content={state.userAnswer} autofocus={true} is_answerbar={true}/>
-												</div>
 
+										<!-- answer bar -->
+										<div class="flex items-center justify-center top-[450px]">     
+											<button 
+												on:click={() => handleResponse(-1)}
+												class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
+												<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
+												<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
+												Hard 
+											</button>
+
+											<button
+												on:click={() => handleResponse(0)}
+												on:keypress={() => handleResponse(0)}
+												autofocus
+												class="h-5 w-1/3 relative z-40 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-x border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
+												<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
+												<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
+												Okay
+											</button>      
+
+											<button	
+												class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-r border-l border-columbia rounded-br-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-0"
+												on:click={() => handleResponse(1)} >
+												<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
+												<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
+												Good
+											</button>    
+										</div>       
+									{/if}
+
+								</div>  
+
+								<!-- answer bar -->
+								<form class="w-full outline-none z-50">
+									<div class="w-full flex flex-wrap items-stretch relative mb-3">
+										<div class = "w-2/3 h-full mx-auto dark:text-whitetext rounded-md border-1 pl-3 pt-1 pb-2 pr-2 outline-none cursor-text">
+											<div id="user-answer-bar" class="border h-full rounded-lg ring-columbia focus:outline-none focus:ring-2 duration-75">
+												<TextfieldEditor bind:content={userAnswer} autofocus={true} is_answerbar={true}/>
 											</div>
-
-											<span class="right-1/4 absolute inset-y-0 flex items-center pt-1 -mr-10 lg:-mr-12">
-													<Hint placement="bottom" text="Reveal card">
-														<button on:click={revealCard} class="focus:outline-none focus:ring ring-columbia ring-offset-8 rounded-sm mr-2 ">
-														<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" 
-															class="w-6 h-6 dark:invert ">
-															<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-														</svg>
-												</button>
-													</Hint>
-
-													  
-												</span>
 										</div>
-									</form>
 
-
-								</div>
-						{/each}
-					</div>
-					{/if}
+										<span class="right-1/4 absolute inset-y-0 flex items-center -mr-10 lg:-mr-14">
+											<Hint placement="bottom" text="Reveal card">
+												<button on:click={revealCard} class="focus:outline-none focus:ring-2 ring-columbia p-1 rounded-sm mr-2 ">
+													<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 dark:invert ">
+														<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+													</svg>
+												</button>
+											</Hint>
+										</span>
+									</div>
+								</form>
+							</div>
+					{/each}
 				</div>
 			{:else}
-				<!-- <h3 class="text-center font-bold text-columbia text-4xl">Well done, Cardwegian</h3>
-				<h3 class="text-center font-mono font-bold text-columbia text-lg">You've completed today's quota</h3> -->
+				<h3 class="text-center font-mono font-bold text-columbia text-lg"> Well done! <br> You've completed today's quota, reviewing {stacks.done.length} cards. </h3>
 			{/if}
 		{/if}
 
 
-
-
-			<div class="fixed left-1/2 -translate-x-1/2 h-1/3 px-2 w-2/3 lg:w-1/2 bottom-10 flex flex-row gap-16">
-				<div class="border-b-2 border-columbia-dark dark:border-offwhite dark:opacity-50 w-full absolute bottom-0 left-1/2 -translate-x-1/2"></div>
-
-			<!-- animated stacks -->
+		<!-- animated stacks -->
+	{#if stacks && (windowHeight > 600 && !cardIsRevealed) || (windowHeight > 775 && cardIsRevealed)}
+		<div class="fixed left-1/2 -translate-x-1/2 h-1/3 px-2 w-2/3 lg:w-1/2 bottom-10 flex flex-row gap-16">
+			<!-- whitespace -->
+			<div class="border-b-2 border-columbia-dark dark:border-offwhite dark:opacity-50 w-full absolute bottom-0 left-1/2 -translate-x-1/2"></div>
 				<!-- done -->
-				<div class='basis-1/3 flex items-end {state.stacks.done.length > getStackHeight() ? "mb-1" : ""}'>
+				<div class='basis-1/3 flex items-end {stacks.done.length > getStackHeight() ? "mb-1" : ""}'>
 					<div class="flex flex-col-reverse w-full space-y-0">
 
-						{#if state.stacks.done.length > getStackHeight()}
-							<Hint placement="bottom" text="{state.stacks.done.length - getStackHeight()} advanced {state.stacks.done.length == 1 ? "card" : "cards"} hidden">
+						{#if stacks.done.length > getStackHeight()}
+							<Hint placement="bottom" text="{stacks.done.length - getStackHeight()} advanced {stacks.done.length == 1 ? "card" : "cards"} hidden">
 								<div class="w-full flex flex-col-reverse">
 									
 										<svg class="h-5 fill-offblack dark:fill-offwhite"
@@ -625,7 +435,7 @@
 							</Hint>
 						
 
-							{#each state.stacks.done.slice(-getStackHeight()) as id (id)}
+							{#each stacks.done.slice(-getStackHeight()) as id (id)}
 								<div class="border border-columbia-dark dark:border-black bg-columbia bg-opacity-57 h-2 rounded-lg text-xs"
 									in:receive="{{key: id}}"
 									out:send="{{key: id}}"
@@ -634,7 +444,7 @@
 								</div>
 							{/each}
 						{:else}
-							{#each state.stacks.done as id (id)}
+							{#each stacks.done as id (id)}
 									<div class="border border-columbia-dark dark:border-black bg-columbia bg-opacity-57 h-2 rounded-lg text-xs"
 										in:receive="{{key: id}}"
 										out:send="{{key: id}}"
@@ -648,11 +458,11 @@
 				</div>
 
 				<!-- new -->
-				<div class='basis-1/3 flex items-end {state.stacks.new.length > getStackHeight() ? "mb-1" : ""}'>
+				<div class='basis-1/3 flex items-end {stacks.new.length > getStackHeight() ? "mb-1" : ""}'>
 					<div class="flex flex-col-reverse w-full space-y-0">
 
-						{#if state.stacks.new.length > getStackHeight()}
-							<Hint placement="bottom" text="{state.stacks.new.length - getStackHeight()} new {state.stacks.new.length == 1 ? "card" : "cards"} hidden">
+						{#if stacks.new.length > getStackHeight()}
+							<Hint placement="bottom" text="{stacks.new.length - getStackHeight()} new {stacks.new.length == 1 ? "card" : "cards"} hidden">
 								<div class="w-full flex flex-col-reverse">
 									
 										<svg class="h-5 fill-offblack dark:fill-offwhite"
@@ -663,7 +473,7 @@
 							</Hint>
 						
 
-							{#each state.stacks.new.slice(-getStackHeight()) as id (id)}
+							{#each stacks.new.slice(-getStackHeight()) as id (id)}
 								<div class="border border-columbia-dark dark:border-black bg-columbia bg-opacity-57 h-2 rounded-lg text-xs"
 									in:receive="{{key: id}}"
 									out:send="{{key: id}}"
@@ -672,7 +482,7 @@
 								</div>
 							{/each}
 						{:else}
-							{#each state.stacks.new as id (id)}
+							{#each stacks.new as id (id)}
 									<div class="border border-columbia-dark dark:border-black bg-columbia bg-opacity-57 h-2 rounded-lg text-xs"
 										in:receive="{{key: id}}"
 										out:send="{{key: id}}"
@@ -687,11 +497,11 @@
 
 
 				<!-- review -->
-				<div class='basis-1/3 flex items-end {state.stacks.review.length > getStackHeight() ? "mb-1" : ""}'>
+				<div class='basis-1/3 flex items-end {stacks.review.length > getStackHeight() ? "mb-1" : ""}'>
 					<div class="flex flex-col-reverse w-full space-y-0">
 
-						{#if state.stacks.review.length > getStackHeight()}
-							<Hint placement="bottom" text="{state.stacks.review.length - getStackHeight()} review {state.stacks.review.length == 1 ? "card" : "cards"} hidden">
+						{#if stacks.review.length > getStackHeight()}
+							<Hint placement="bottom" text="{stacks.review.length - getStackHeight()} review {stacks.review.length == 1 ? "card" : "cards"} hidden">
 								<div class="w-full flex flex-col-reverse">
 									
 										<svg class="h-5 fill-offblack dark:fill-offwhite"
@@ -702,7 +512,7 @@
 							</Hint>
 						
 
-							{#each state.stacks.review.slice(-getStackHeight()) as id (id)}
+							{#each stacks.review.slice(-getStackHeight()) as id (id)}
 								<div class="border border-columbia-dark dark:border-black bg-columbia bg-opacity-57 h-2 rounded-lg text-xs"
 									in:receive="{{key: id}}"
 									out:send="{{key: id}}"
@@ -711,7 +521,7 @@
 								</div>
 							{/each}
 						{:else}
-							{#each state.stacks.review as id (id)}
+							{#each stacks.review as id (id)}
 									<div class="border border-columbia-dark dark:border-black bg-columbia bg-opacity-57 h-2 rounded-lg text-xs"
 										in:receive="{{key: id}}"
 										out:send="{{key: id}}"
@@ -723,93 +533,19 @@
 
 					</div>
 				</div>
-
 			</div>
+		{/if}
+	</div>
 
-			<div class="flex flex-row absolute bottom-0 left-4"	>
-				
-
-
-				<!-- backward chevron -->
-				<div class="z-30 float-left">
-					{#if state.buf.idx > 0}
-						<Hint placement="top" text="Press < to go back">
-							<button
-								on:click={getLastCard}
-								class="float-right cursor-pointer ring-columbia focus:outline-none focus:ring duration-75">
-								<svg class="dark:invert flex-none h-7 w-7 cursor-pointer  "
-									fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" data-darkreader-inline-fill="">
-									<path clip-rule="evenodd" fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"></path>
-								</svg>
-							</button>
-						</Hint>
-					{:else if state.buf.idx < 1}
-						<Hint placement="top" text="Press < to go back">
-							<div class="float-right cursor-default opacity-50">
-								<svg class="dark:invert flex-none h-7 w-7 "
-									fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" data-darkreader-inline-fill="">
-									<path clip-rule="evenodd" fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z"></path>
-								</svg>
-							</div>
-						</Hint>
-					{/if}
-				</div>
-
-				<!-- forward chevron -->
-				<div class="z-30 float-left">
-					{#if state.buf.data[state.buf.idx] && state.buf.data[state.buf.idx].stack_after}
-						<Hint placement="top" text="Press > to go forward">
-							<button
-								on:click={undoGetLastCard}
-								class="float-right cursor-pointer ring-columbia focus:outline-none focus:ring duration-75">
-								<svg class="dark:invert flex-none h-7 w-7 cursor-pointer  "
-									fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" data-darkreader-inline-fill="">
-									<path clip-rule="evenodd" fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"></path>
-								</svg>
-							</button>
-						</Hint>
-					{:else}
-						<Hint placement="top" text="Press > to go forward">
-							<div
-								class="float-right cursor-default opacity-50">
-								<svg class="dark:invert flex-none h-7 w-7 "
-									fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" data-darkreader-inline-fill="">
-									<path clip-rule="evenodd" fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"></path>
-								</svg>
-							</div>
-						</Hint>
-					{/if}
-				</div>
-
-				
-			</div>
-			<!-- <div class="z-30 absolute right-2 bottom-0">
-				<Hint placement="left" text="Move all cards from the middle stack (new cards) and right stack (reviewed cards) to the left stack by practicing">
-					<div class="float-right cursor-default">
-						<svg class="dark:invert flex-none h-6 w-6 outline-columbia focus:outline"
-							fill="currentColor" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-							<path clip-rule="evenodd" fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.061-1.061 3 3 0 112.871 5.026v.345a.75.75 0 01-1.5 0v-.5c0-.72.57-1.172 1.081-1.287A1.5 1.5 0 108.94 6.94zM10 15a1 1 0 100-2 1 1 0 000 2z"></path>
-						</svg>
-					</div>
-				</Hint>
-			</div> -->
-
+		<!-- debugging stack height -->
 			<!-- <div class="absolute right-5 bottom-0 dark:invert">
                 {windowHeight}
-				({state.buf.idx} / {state.buf.data.length})
 			</div> -->
-				
-
-		</div>
-
-
-	</div>
 </div>
 </div>
 
 <style lang="postcss">
     .card-container {                                                           
-                                                                                 
         display: grid;                                                          
         grid-gap: 32px;                                                         
         justify-content: center;                                                
@@ -817,7 +553,6 @@
     }                       
 
 	.card {                                                                     
-                                                                                
         border: 0px solid #e1dfdd;                                              
         box-shadow: 0 10px 20px -8px rgba(197, 214, 214);                       
         transition: all 0.3s cubic-bezier(0, 0, 0.5, 1);                        

@@ -7,6 +7,7 @@ module.exports = {
 	theme: {
 		colors: {
 			'columbia': "#B9D9ED",   // columbia blue
+			'pink': "#F9A7B0",
 			'inverted-columbia': "#462612",
 			'columbia-dark': "#191970",   // midnight blue
 			'offwhite': "#faf9f6", 	 // platinum from whiskey listings drop shadows

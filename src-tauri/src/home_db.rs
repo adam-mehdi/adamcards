@@ -1,0 +1,678 @@
+// #![allow(unused_imports)]
+// #![allow(unused_variables)]
+// #![allow(dead_code)]
+
+use std::sync::{ Mutex, Arc };
+use chrono::{prelude::*, Local, DateTime};
+
+use tauri;
+use serde::{
+    Serialize, 
+    Deserialize
+};
+
+use diesel::{insert_into, delete, update};
+use diesel::prelude::*;
+use diesel::result::Error;
+
+use crate::models::Entry;
+
+use crate::utils_db::get_num_boxes;
+use crate::edit_db::{get_days_to_go, write_quotas};
+use crate::review_db::handle_missed_days;
+
+
+pub struct DatabaseState {
+    pub conn: Arc<Mutex<PgConnection>>,
+}
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EntryMetadata {
+    pub entry_type: String,
+    pub deadline_date: Option<String>,
+    pub study_intensity: Option<i32>
+}
+
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct FolderSystem {
+    pub pairs: Vec<EntryPair>,
+    pub data: Vec<EntryData>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EntryPair {
+    pub parent_id: i32,
+    pub child_id: i32
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct EntryData {
+    pub entry_id: i32,
+    pub entry_name: String,
+    pub is_expanded: Option<bool>,
+    pub entry_type: String,
+    pub entry_quota: Option<Quota>
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Quota {
+    pub new_left: i32,
+    pub review_left: i32,
+    pub num_progressed: i32
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct AppConfig {
+    is_dark_mode: bool,
+    is_textfield: bool
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ProgressData {
+    curr_day: i32,
+    tot_days: i32
+}
+
+pub fn folder_system_is_empty(conn: &mut PgConnection) -> bool {
+    use crate::schema::folders;
+    let all_folders = folders::table
+        .select(folders::id)
+        .load::<i32>(conn)
+        .expect("Error loading folder");
+
+    if all_folders.len() == 0 {
+        return true;
+    }
+    false
+
+}
+
+#[tauri::command] 
+pub fn read_user_config(state: tauri::State<DatabaseState>) -> AppConfig { 
+    use crate::schema::userconfig;
+
+    let conn= &mut *state.conn.lock().unwrap();
+    let config = userconfig::table
+        .select((userconfig::is_dark_mode, userconfig::is_text_field))
+        .load::<(bool, bool)>(conn)
+        .expect("failed to read config");
+
+    if config.len() != 1 {
+        eprintln!("multiple rows in user config")
+    }
+
+    AppConfig { 
+        is_dark_mode: config[0].0,
+        is_textfield: config[0].1
+    }
+}
+
+#[tauri::command] 
+pub fn write_dark_mode(state: tauri::State<DatabaseState>, is_dark_mode: bool) { 
+    use crate::schema::userconfig;
+    
+    let conn= &mut *state.conn.lock().unwrap();
+    update(userconfig::table)
+        .set(userconfig::is_dark_mode.eq(is_dark_mode))
+        .execute(conn)
+        .expect("failed to set dark mode");
+}
+
+#[tauri::command] 
+pub fn read_folder_system(state: tauri::State<DatabaseState>) -> Option<FolderSystem> {
+    use crate::schema::{entries, parents};
+
+    let conn= &mut *state.conn.lock().unwrap();
+
+    // read parents
+    let all_parents = parents::table
+        .select((parents::parent_id, parents::child_id))
+        .load::<(i32, i32)>(conn)
+        .expect("Error loading parents");
+
+    let mut pairs = Vec::new();
+    for parent in all_parents {
+        pairs.push(EntryPair {parent_id: parent.0, child_id: parent.1});
+    }
+
+
+    let all_entries = entries::table
+        .select((entries::id, entries::name, entries::is_expanded))
+        .load::<(i32, String, Option<bool>)>(conn)
+        .expect("Error loading parents");
+
+    let mut data: Vec<EntryData> = Vec::new();
+    for entry in all_entries {
+        let entry_id = entry.0;
+        let type_result = get_entry_type(conn, entry_id);
+        let entry_type;
+
+        match type_result {
+            Ok(t) => {
+                entry_type = t;
+            },
+
+            Err(Error::NotFound) | Err(_) => {
+                eprintln!("Database Integrity Error: failed to find entry id {} \
+                in decks, deadlines, or folders", entry_id);
+                return None;
+            }
+        }
+
+        data.push(
+            EntryData {
+                entry_id,
+                entry_name: entry.1,
+                is_expanded: entry.2,
+                entry_type,
+                entry_quota: None // Some(Quota{new_left: 0, review_left:0, num_progressed: 0})
+            }
+        );
+    }
+
+    // write quotas into data in-place
+    let mut folder_system = FolderSystem { pairs, data };
+    folder_system = compute_quotas_(conn, folder_system);
+
+    Some(folder_system)
+}
+
+
+fn compute_quotas_(conn: &mut PgConnection, mut folder_system: FolderSystem) -> FolderSystem {
+    use crate::schema::{quotas, parents};
+
+    // first write the quotas of all of the decks
+    let mut deck_ids = Vec::new();
+    for entry in &mut folder_system.data {
+        let entry_type = get_entry_type(conn, entry.entry_id)
+            .expect("failed to retrieve entry type");
+        if entry_type == String::from("deck") {
+
+            // get days to go of this deck
+            let deadline_id = parents::table
+                .filter(parents::child_id.eq(entry.entry_id))
+                .select(parents::parent_id)
+                .get_result::<i32>(conn)
+                .expect("failed to get deadline parent");
+
+            let days_to_go = get_days_to_go(conn, deadline_id);
+            handle_missed_days(conn, entry.entry_id, &days_to_go);
+
+            let entry_quota = quotas::table
+                .filter(quotas::id.eq(entry.entry_id).and(quotas::days_to_go.eq(days_to_go)))
+                .select((quotas::new_assigned, quotas::review_assigned, quotas::new_practiced, quotas::review_practiced))
+                .get_result::<(i32, i32, i32, i32)>(conn)
+                .optional()
+                .expect("failed to grab today's quota");
+
+            if let Some((new_assigned, review_assigned, new_prac, review_prac)) = entry_quota {
+                entry.entry_quota = Some(Quota { 
+                    new_left: new_assigned, 
+                    review_left: review_assigned,
+                    num_progressed: new_prac + review_prac
+                 });
+
+                 deck_ids.push(entry.entry_id);
+            }
+            
+        }
+    }
+
+    // now get quotas of deadlines as as sum of quotas of children 
+    
+    let deadline_ids = parents::table
+        .filter(parents::child_id.eq_any(deck_ids))
+        .select(parents::parent_id)
+        .load::<i32>(conn)
+        .expect("failed to get children");
+
+    for deadline_id in deadline_ids {
+        let child_decks = parents::table
+            .filter(parents::parent_id.eq(deadline_id))
+            .select(parents::child_id)
+            .load::<i32>(conn)
+            .expect("failed to get decks of deadline");
+
+        let child_quotas: Vec<&Option<Quota>> = folder_system.data.iter()
+            .filter(|x| child_decks.contains(&x.entry_id))
+            .map(|x| &x.entry_quota)
+            .collect();
+
+        // aggregate quotas
+        let mut new_left = 0; 
+        let mut review_left = 0; 
+        let mut num_progressed = 0;
+        for child_quota in child_quotas { 
+            if let Some(quota) = child_quota {
+                new_left += quota.new_left;
+                review_left += quota.review_left;
+                num_progressed += quota.num_progressed;
+            }
+        }
+
+        for entry in &mut folder_system.data {
+            if entry.entry_id == deadline_id {
+                entry.entry_quota = Some(Quota { new_left, review_left, num_progressed });
+            }
+        }
+    }
+
+    folder_system
+}
+
+
+/**
+ * Given an id of an Entry, returns whether this id corresponds to a 
+ * folder, deadline, or deck.
+ * 
+ * Args:
+ *  conn: connection to diesel psql database
+ *  entry_id: id of entry to give a type to
+ *  
+ */
+fn get_entry_type(conn: &mut PgConnection, entry_id: i32) -> Result<String, Error> {
+    use crate::schema::{folders, decks, deadlines};
+
+    let folder_id = folders::table
+        .select(folders::id)
+        .filter(folders::id.eq(entry_id))
+        .first::<i32>(conn);
+    if let Ok(_) = folder_id {
+        return Ok("folder".to_string());
+    }
+
+    let deadline_id = deadlines::table
+        .select(deadlines::id)
+        .filter(deadlines::id.eq(entry_id))
+        .first::<i32>(conn);
+    if let Ok(_) = deadline_id {
+        return Ok("deadline".to_string());
+    }
+
+    let deck_id = decks::table
+        .select(decks::id)
+        .filter(decks::id.eq(entry_id))
+        .first::<i32>(conn);
+    if let Ok(_) = deck_id {
+        return Ok("deck".to_string());
+    }
+
+    Err(Error::NotFound)
+}
+
+
+
+/** 
+ * Creates entry in database.
+ * 
+ * Args:
+ *  conn: connection to diesel psql database
+ *  entry_name: name of entry to be created
+ *  parent_id: id of parent of this entry if not root folder
+ *  entry_metadata: {entry_type: String, deadline_date: Option<String>, study_intensity: Option<String>}
+ *  
+ */
+#[tauri::command] 
+pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent_id: Option<i32>, md: EntryMetadata) {
+    use crate::schema::{entries, folders, parents, decks, deadlines};
+
+    let conn= &mut *state.conn.lock().unwrap();
+    let is_expanded = if md.entry_type == "deck" { None } else { Some(true) };
+
+
+
+    // insert into generalized relation `Entry`
+    let new_entry: Entry = insert_into(entries::table)
+        .values((entries::name.eq(entry_name), entries::is_expanded.eq(is_expanded)))
+        .get_result(conn)
+        .unwrap();
+
+    let entry_type = md.entry_type.as_str();
+
+    // insert into specialized relation `Folder`/`Deadline`/`Deck` using id
+    match entry_type {
+        "folder" => {
+                insert_into(folders::table)
+                    .values(folders::id.eq(new_entry.id))
+                    .execute(conn)
+                    .unwrap();
+        },
+        "deadline" => {
+            let deadline = string_to_chrono(&md.deadline_date.unwrap());
+            if let Err(_) = deadline {
+                return;
+            }
+            
+            insert_into(deadlines::table)
+                .values((
+                    deadlines::id.eq(new_entry.id), 
+                    deadlines::deadline_date.eq(deadline.unwrap()),
+                    deadlines::date_created.eq(get_current_time()),
+                    deadlines::study_intensity.eq(md.study_intensity.unwrap()),
+                    deadlines::num_reset.eq(0)
+                ))
+                .execute(conn)
+                .unwrap();
+        },
+        "deck" => {
+            let dl_id = parent_id.expect("no parent of deck");
+            let num_boxes = compute_num_boxes_from_id(conn, dl_id);
+            insert_into(decks::table)
+                .values((
+                    decks::id.eq(new_entry.id),
+                    decks::date_created.eq(get_current_time()),
+                    decks::num_boxes.eq(num_boxes)
+                ))
+                .execute(conn)
+                .unwrap();
+        },
+        _ => eprintln!("failed to create entry")
+
+    }
+
+    if let Some(pid) = parent_id {
+        insert_into(parents::table)
+            .values((parents::child_id.eq(new_entry.id), parents::parent_id.eq(pid)))
+            .execute(conn)
+            .unwrap();
+    }
+
+    // dbg!(new_entry);
+}
+
+
+/** 
+ * Deletes from the database a file system entry, its children, and all their contents
+ * 
+ * Args:
+ *  conn: connection to diesel psql database
+ *  entry_id: id of entry to be deleted
+ *  entry_type: type of entry to be deleted. is in "deadline", "folder", or "deck"
+ */
+#[tauri::command] 
+pub fn delete_entry(state: tauri::State<DatabaseState>, entry_id: i32) {
+    use crate::schema::{entries, parents};
+
+    let conn= &mut *state.conn.lock().unwrap();
+
+    // iteratively delete ids that descend from this id
+    let mut parents = vec![entry_id];
+    loop {
+        let children = parents::table
+            .filter(parents::parent_id.eq_any(parents))
+            .select(parents::child_id)
+            .get_results(conn)
+            .expect("failed to select children");
+
+        if children.len() == 0 {
+            break;
+        }
+
+        // delete all descending entries; deletions cascade to parents and deck contents
+        delete(entries::table.filter(entries::id.eq_any(&children)))
+            .execute(conn)
+            .expect("failed to delete children");
+
+        parents = children;
+    }
+
+    // delete this entry
+    delete(entries::table.filter(entries::id.eq(entry_id)))
+        .execute(conn)
+        .expect("failed to delete entry");
+
+}
+
+
+
+/** 
+ * Moves an entry to a new folder. Supported entry types are folder and deadline
+ * 
+ */
+#[tauri::command] 
+pub fn move_entry(state: tauri::State<DatabaseState>, entry_id: i32, new_parent_id: i32) {
+    use crate::schema::parents;
+    let conn= &mut *state.conn.lock().unwrap();
+
+    // update (parent_id, entry_id) in parents, setting parent_id to new_parent_id
+    let update_count = update(parents::table)
+        .filter(parents::child_id.eq(entry_id))
+        .set(parents::parent_id.eq(new_parent_id))
+        .execute(conn) 
+        .expect("failed to set new parent");
+
+    if update_count != 1 {
+        eprintln!("Warning: renamed multiple entries");
+    }
+}
+
+
+/** 
+ * Renames an entry `entry_id` to `new_name`
+ * 
+ */
+#[tauri::command] 
+pub fn rename_entry(state: tauri::State<DatabaseState>, entry_id: i32, new_name: String) {
+    use crate::schema::entries;
+    let conn= &mut *state.conn.lock().unwrap();
+
+    // update name attribute at entry_id from entries relation to new_name
+    let update_count = update(entries::table)
+        .filter(entries::id.eq(entry_id))
+        .set(entries::name.eq(new_name))
+        .execute(conn)
+        .expect("failed to rename");
+
+    if update_count != 1 {
+        eprintln!("Warning: renamed multiple entries");
+    }
+
+}
+
+
+// pub fn get_deck_quotas(data_dir: State<AppDataDirState>, deck_paths: Vec<String>
+//     ) -> Vec<EntryQuota> {
+
+// }
+
+#[tauri::command]
+pub fn is_duplicate_name(state: tauri::State<DatabaseState>, parent_id: Option<i32>, new_name: String) -> bool {
+    use crate::schema::{parents, entries};
+    let conn= &mut *state.conn.lock().unwrap();
+
+    if let None = parent_id {
+        return false;
+    }
+    
+    // select children of `parent_id`
+    let parent_id = parent_id.unwrap();
+    let children = parents::table
+        .filter(parents::parent_id.eq(parent_id))
+        .select(parents::child_id)
+        .load::<i32>(conn)
+        .expect("failed to load children of new parent");
+
+    // select those children with a name equal to `new_name`
+    let duplicate_exists = entries::table
+        .filter(entries::id.eq_any(children).and(entries::name.eq(new_name)))
+        .select(entries::id)
+        .load::<i32>(conn)
+        .expect("failed to grab children with duplicate names")
+        .len() > 0;
+
+    duplicate_exists
+}
+
+
+
+/**
+ * Initializes root folder for first startup of app
+ */
+pub fn init_root_folder(conn: &mut PgConnection) {
+    if !folder_system_is_empty(conn) {
+        return;
+    }
+    use crate::schema::{entries, folders, userconfig};
+
+    let entry_name = "My Trunk";
+    let is_expanded: Option<bool> = Some(true);
+
+    // create_entry(state, "My Trunk", None, md);
+    let new_entry: Entry = insert_into(entries::table)
+        .values((entries::name.eq(entry_name), entries::is_expanded.eq(is_expanded)))
+        .get_result(conn)
+        .unwrap();
+
+    // insert into specialized relation `Folder`/`Deadline`/`Deck` using id
+    insert_into(folders::table)
+        .values(folders::id.eq(new_entry.id))
+        .execute(conn)
+        .expect("failed to initialize root folder");
+
+
+    insert_into(userconfig::table)
+        .values((userconfig::is_dark_mode.eq(false), userconfig::is_text_field.eq(false)))
+        .execute(conn)
+        .expect("failed to initialize user config");
+}
+
+
+/**
+ * Converts a string in the format YYYY-MM-DD HH:MM:SS to a NaiveDateTime taking
+ * local timezone into account
+ */
+fn string_to_chrono(datetime: &str) -> Result<DateTime<FixedOffset>, String> {
+    let format_str = "%Y-%m-%d %H:%M:%S";
+    let timestamp = NaiveDateTime::parse_from_str(datetime, format_str);
+    if let Err(_) = timestamp {
+        eprintln!("invalid deadline {}", datetime);
+        return Err("parsing error".to_string());
+    }
+    
+    Ok(naive_to_fixedoffset(timestamp.unwrap()))
+}
+
+pub fn naive_to_fixedoffset(naive_datetime: NaiveDateTime) -> DateTime<FixedOffset> {
+    let local_datetime = Local::now();
+    let offset = local_datetime.offset();
+    DateTime::<FixedOffset>::from_utc(naive_datetime, *offset)
+}
+
+#[tauri::command]
+pub fn entered_past_deadline(deadline: String) -> bool {
+    let timestamp = NaiveDateTime::parse_from_str(&deadline, "%Y-%m-%d %H:%M:%S");
+    if let Err(_) = timestamp {
+        eprintln!("invalid deadline {}", deadline);
+        return true;
+    }
+    let current_time = Local::now().naive_local();
+    timestamp.unwrap() < current_time
+}
+
+
+
+
+fn get_current_time() -> NaiveDateTime {
+    let current_time = Local::now().naive_local();
+    current_time
+}
+
+// returns deadline date in MMM dd mm:ss format and whether it is complete
+#[tauri::command] 
+pub fn get_deadline_date(state: tauri::State<DatabaseState>, deadline_id: i32) -> (String, bool) {
+    use crate::schema::deadlines;
+    let conn= &mut *state.conn.lock().unwrap();
+
+    let deadline_date = deadlines::table
+        .filter(deadlines::id.eq(deadline_id))
+        .select(deadlines::deadline_date)
+        .get_result::<NaiveDateTime>(conn)
+        .expect("failed to load deadline date");
+
+    let formatted_date = Local.from_local_datetime(&deadline_date)
+        .unwrap().format("%b %d %H:%M").to_string();
+
+    let is_complete = deadline_date < get_current_time();
+
+    (formatted_date, is_complete)
+
+}
+
+pub fn compute_num_boxes_from_id(conn: &mut PgConnection, parent_id: i32) -> i32 {
+    use crate::schema::deadlines;
+
+    let deadline_info = deadlines::table
+        .filter(deadlines::id.eq(parent_id))
+        .select((deadlines::deadline_date, deadlines::study_intensity, deadlines::num_reset))
+        .get_result::<(NaiveDateTime, Option<i32>, i32)>(conn)
+        .expect("failed to get parent deadline info");
+
+
+    let study_intensity = deadline_info.1.expect("did not record study intensity");
+    let num_reset = deadline_info.2;
+
+    let days_to_go = get_days_to_go(conn, parent_id);
+    get_num_boxes(days_to_go as i32, study_intensity, num_reset)
+}
+
+
+
+#[tauri::command]
+pub fn reset_deadline(
+    state: tauri::State<DatabaseState>,
+    deadline_id: i32,
+    study_intensity: i32,
+    new_deadline_date: String
+) {
+    use crate::schema::{quotas, parents, deadlines, deckitems, cards};
+
+    let conn= &mut *state.conn.lock().unwrap();
+
+    // update deadline date and num_reset
+    let deadline = string_to_chrono(&new_deadline_date);
+    if let Err(_) = deadline {
+        return;
+    }
+
+    update(deadlines::table)
+        .filter(deadlines::id.eq(deadline_id))
+        .set((deadlines::num_reset.eq(deadlines::num_reset + 1), deadlines::study_intensity.eq(study_intensity), deadlines::deadline_date.eq(deadline.unwrap())))
+        .returning(deadlines::num_reset)
+        .execute(conn)
+        .expect("failed to update deadline num reset");
+    
+
+    let deck_ids = parents::table
+        .filter(parents::parent_id.eq(deadline_id))
+        .select(parents::child_id)
+        .get_results::<i32>(conn)
+        .expect("failed to retrieve deck ids");
+
+    // update deck num_boxes
+    for deck_id in deck_ids {
+        delete(quotas::table)
+            .filter(quotas::id.eq(deck_id))
+            .execute(conn)
+            .expect("failed to delete existing quotas");
+
+        let item_ids = deckitems::table
+            .filter(deckitems::deck_id.eq(deck_id))
+            .select(deckitems::item_id)
+            .get_results::<i32>(conn)
+            .expect("failed to get number of items");
+
+        let num_cards = cards::table
+            .filter(cards::id.eq_any(item_ids))
+            .select(cards::id)
+            .get_results::<i32>(conn)
+            .expect("failed to get number of cards (discounting documents from items)")
+            .len() as i32;
+
+        write_quotas(conn, deadline_id, deck_id, num_cards);
+
+    }
+
+}
+

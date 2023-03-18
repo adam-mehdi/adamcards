@@ -1,0 +1,6 @@
+-- This file should undo anything in `up.sql`
+DROP TABLE IF EXISTS folders CASCADE;
+DROP TABLE IF EXISTS deadlines CASCADE;
+DROP TABLE IF EXISTS decks CASCADE;
+DROP TABLE IF EXISTS parents CASCADE;
+DROP TABLE IF EXISTS entries CASCADE;
