@@ -6,10 +6,10 @@
     import Paragraph from '@tiptap/extension-paragraph';
     import Typography from '@tiptap/extension-typography'
     
-
+    interface Card { id: number, front: string, back: string }
   
     let element: HTMLElement
-
+    
     export let is_textfield = false;
     export let is_gallery = false;
     export let is_answerbar = false;

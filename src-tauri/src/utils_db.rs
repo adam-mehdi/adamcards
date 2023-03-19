@@ -65,6 +65,7 @@ pub fn days_until_deadline(
       inter = get_next_datetime_at_time(inter, new_day_time);
     }
 
+
     if day_bins.len() == 0 {
       // on exam day
       if Local::now().timestamp() < datetime.timestamp() {

@@ -100,6 +100,9 @@
 		stacks = stacks;
 	}
 
+	function updateCard(card: Card) {
+		invoke("update_card", { card })
+	}
 
 	let okayCanFire = false;
 	async function handleResponse(score: number) {
@@ -337,7 +340,7 @@
 									<div class="opacity-50 font-serif ml-4">{currCard.deck_name}</div>
 
 									<!-- front field -->
-									<div class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
+									<div on:focusout={() => updateCard(currCard.card)} class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
 										<TextfieldEditor bind:content={currCard.card.front}/>
 									</div>          
 
@@ -348,7 +351,7 @@
 									{#if !cardIsRevealed}
 										<div class="mx-8 my-6 text-inherit"></div>          
 									{:else}
-										<div class="h-1/2 mx-8 mt-6 mb-8 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
+										<div on:focusout={() => updateCard(currCard.card)} class="h-1/2 mx-8 mt-6 mb-8 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
 											<TextfieldEditor bind:content={currCard.card.back}/>
 										</div>          
 											

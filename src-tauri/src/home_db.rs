@@ -341,14 +341,11 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
         },
         "deadline" => {
             let deadline = string_to_chrono(&md.deadline_date.unwrap());
-            if let Err(_) = deadline {
-                return;
-            }
             
             insert_into(deadlines::table)
                 .values((
                     deadlines::id.eq(new_entry.id), 
-                    deadlines::deadline_date.eq(deadline.unwrap()),
+                    deadlines::deadline_date.eq(deadline),
                     deadlines::date_created.eq(get_current_time()),
                     deadlines::study_intensity.eq(md.study_intensity.unwrap()),
                     deadlines::num_reset.eq(0)
@@ -379,9 +376,12 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
             .unwrap();
     }
 
-    // dbg!(new_entry);
 }
 
+fn get_current_time() -> NaiveDateTime {
+    let current_time = Local::now().naive_local();
+    current_time
+}
 
 /** 
  * Deletes from the database a file system entry, its children, and all their contents
@@ -543,41 +543,28 @@ pub fn init_root_folder(conn: &mut PgConnection) {
  * Converts a string in the format YYYY-MM-DD HH:MM:SS to a NaiveDateTime taking
  * local timezone into account
  */
-fn string_to_chrono(datetime: &str) -> Result<DateTime<FixedOffset>, String> {
+fn string_to_chrono(datetime: &str) -> DateTime<FixedOffset> {
     let format_str = "%Y-%m-%d %H:%M:%S";
-    let timestamp = NaiveDateTime::parse_from_str(datetime, format_str);
-    if let Err(_) = timestamp {
-        eprintln!("invalid deadline {}", datetime);
-        return Err("parsing error".to_string());
-    }
+    let naive_date_time = NaiveDateTime::parse_from_str(datetime, format_str)
+        .expect("invalid deadline input");
+    naive_to_localoffset(naive_date_time)
     
-    Ok(naive_to_fixedoffset(timestamp.unwrap()))
 }
 
-pub fn naive_to_fixedoffset(naive_datetime: NaiveDateTime) -> DateTime<FixedOffset> {
-    let local_datetime = Local::now();
-    let offset = local_datetime.offset();
-    DateTime::<FixedOffset>::from_utc(naive_datetime, *offset)
+fn get_local_datetime() -> DateTime<FixedOffset> {
+    let local_date_time = Local::now();
+    let local_offset = local_date_time.offset();
+    let fixed_offset_date_time = local_date_time.with_timezone(local_offset);
+    return fixed_offset_date_time;
 }
 
 #[tauri::command]
 pub fn entered_past_deadline(deadline: String) -> bool {
-    let timestamp = NaiveDateTime::parse_from_str(&deadline, "%Y-%m-%d %H:%M:%S");
-    if let Err(_) = timestamp {
-        eprintln!("invalid deadline {}", deadline);
-        return true;
-    }
-    let current_time = Local::now().naive_local();
-    timestamp.unwrap() < current_time
+    let datetime = string_to_chrono(&deadline);
+    let now = get_local_datetime();
+    datetime < now
 }
 
-
-
-
-fn get_current_time() -> NaiveDateTime {
-    let current_time = Local::now().naive_local();
-    current_time
-}
 
 // returns deadline date in MMM dd mm:ss format and whether it is complete
 #[tauri::command] 
@@ -591,10 +578,14 @@ pub fn get_deadline_date(state: tauri::State<DatabaseState>, deadline_id: i32) -
         .get_result::<NaiveDateTime>(conn)
         .expect("failed to load deadline date");
 
+    // deadline date represents UTC timezone; convert it to local
+    
+
+    let deadline_date = Local.from_utc_datetime(&deadline_date).naive_local();
     let formatted_date = Local.from_local_datetime(&deadline_date)
         .unwrap().format("%b %d %H:%M").to_string();
 
-    let is_complete = deadline_date < get_current_time();
+    let is_complete = naive_to_localoffset(deadline_date).timestamp() < Local::now().timestamp();
 
     (formatted_date, is_complete)
 
@@ -618,6 +609,11 @@ pub fn compute_num_boxes_from_id(conn: &mut PgConnection, parent_id: i32) -> i32
 }
 
 
+pub fn naive_to_localoffset(naive_date_time: NaiveDateTime) -> DateTime<FixedOffset> {
+    let local_date_time = Local.from_local_datetime(&naive_date_time).unwrap();
+    let fixed_offset_date_time = local_date_time.with_timezone(Local::now().offset());
+    fixed_offset_date_time
+}
 
 #[tauri::command]
 pub fn reset_deadline(
@@ -632,13 +628,10 @@ pub fn reset_deadline(
 
     // update deadline date and num_reset
     let deadline = string_to_chrono(&new_deadline_date);
-    if let Err(_) = deadline {
-        return;
-    }
 
     update(deadlines::table)
         .filter(deadlines::id.eq(deadline_id))
-        .set((deadlines::num_reset.eq(deadlines::num_reset + 1), deadlines::study_intensity.eq(study_intensity), deadlines::deadline_date.eq(deadline.unwrap())))
+        .set((deadlines::num_reset.eq(deadlines::num_reset + 1), deadlines::study_intensity.eq(study_intensity), deadlines::deadline_date.eq(deadline)))
         .returning(deadlines::num_reset)
         .execute(conn)
         .expect("failed to update deadline num reset");

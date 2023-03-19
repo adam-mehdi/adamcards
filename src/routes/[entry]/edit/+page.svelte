@@ -1,7 +1,7 @@
 
 <script lang="ts">
 	import { flip } from 'svelte/animate'
-	import { page } from '$app/stores';
+	import { page, updated } from '$app/stores';
 	import { invoke } from '@tauri-apps/api/tauri';
 	import configStore from '$lib/stores/configStore'
 	import Hint from 'svelte-hint';
@@ -66,6 +66,7 @@
 
 	async function getDeadlineContents() {
 		deadlineContents = await invoke('read_deadline_contents', { deadlineId });
+		if (deadlineContents.length == 0) return
 		panel.selected_deck = deadlineContents[deadlineContents.length - 1].deck_name.toString();
 
 		for (let deckContents of deadlineContents) {
@@ -131,7 +132,8 @@
 		card_gallery = card_gallery
 	}
 
-	function createCardFrontBack() {
+	async function createCardFrontBack() {
+		if (await checkDeadlinePast()) return
 		let card: NewCard = { "front": panel.front, "back": panel.back }
 		createCardsBackend([card])
 		panel.front = ''
@@ -139,7 +141,8 @@
 		clearEditorToggle = !clearEditorToggle;
 	}
 
-	function createCardTextfield() {
+	async function createCardTextfield() {
+		if (await checkDeadlinePast()) return
 		if (panel.textfield == "")
 			return;
 
@@ -260,6 +263,21 @@
 
 	}
 
+
+	function updateCard(card: Card) {
+		invoke("update_card", { card })
+	}
+
+	// function updateCards() {
+	// 	for (let deckContents of deadlineContents) {
+	// 		for (let card of deckContents.cards) {
+	// 			invoke("update_card", { card })
+
+	// 		}
+	// 	}
+	// }
+	// onDestroy(updateCards)
+
 	/*
 	 * Animate cards: drag-and-drop and crossfade
 	 */
@@ -288,7 +306,22 @@
 	}
 
 	let newName = "";
-	function createDeck() {
+	let deadline_is_complete: boolean;
+	async function checkDeadlinePast(): Promise<boolean> {
+		let deadline_tuple: [String, boolean] = await invoke("get_deadline_date", { deadlineId });
+		deadline_is_complete = deadline_tuple[1];
+		if (deadline_is_complete) {
+			createDeckTrayOpen = false
+			clearEditorToggle = !clearEditorToggle
+		}
+			
+		return deadline_is_complete;
+	}
+
+	async function createDeck() {
+		// entry_deadline_date, deadline_complete
+		if (await checkDeadlinePast()) return
+
 		if (newName == "") return
 
 		let md = {
@@ -355,19 +388,20 @@
 				{/if}
 			</div>
 
-
-			<div class="bg-offwhite z-50 dark:bg-offblack">
-				<button on:click={toggleCreateDeckTray} class="h-9 w-9 z-50 dark:bg-offblack ring-columbia mt-1 focus:outline-none focus:ring duration-75 rounded-md">
-					<Hint placement="bottom" text="Create deck">
-						<svg 
-							class="fill-columbia  bg-inherit cursor-pointer h-7 w-8 outline-columbia focus:outline outline-4 outline-offset-2 " 
-							xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" >
-							<path fill-rule="evenodd" d="M5.625 1.5H9a3.75 3.75 0 013.75 3.75v1.875c0 1.036.84 1.875 1.875 1.875H16.5a3.75 3.75 0 013.75 3.75v7.875c0 1.035-.84 1.875-1.875 1.875H5.625a1.875 1.875 0 01-1.875-1.875V3.375c0-1.036.84-1.875 1.875-1.875zM12.75 12a.75.75 0 00-1.5 0v2.25H9a.75.75 0 000 1.5h2.25V18a.75.75 0 001.5 0v-2.25H15a.75.75 0 000-1.5h-2.25V12z" clip-rule="evenodd" />
-							<path d="M14.25 5.25a5.23 5.23 0 00-1.279-3.434 9.768 9.768 0 016.963 6.963A5.23 5.23 0 0016.5 7.5h-1.875a.375.375 0 01-.375-.375V5.25z" />
-						</svg>
-					</Hint>
-				</button>
-			</div>
+			{#if !deadline_is_complete}
+				<div class="bg-offwhite z-50 dark:bg-offblack">
+					<button on:click={toggleCreateDeckTray} class="h-9 w-9 z-50 dark:bg-offblack ring-columbia mt-1 focus:outline-none focus:ring duration-75 rounded-md">
+						<Hint placement="bottom" text="Create deck">
+							<svg 
+								class="fill-columbia  bg-inherit cursor-pointer h-7 w-8 outline-columbia focus:outline outline-4 outline-offset-2 " 
+								xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" >
+								<path fill-rule="evenodd" d="M5.625 1.5H9a3.75 3.75 0 013.75 3.75v1.875c0 1.036.84 1.875 1.875 1.875H16.5a3.75 3.75 0 013.75 3.75v7.875c0 1.035-.84 1.875-1.875 1.875H5.625a1.875 1.875 0 01-1.875-1.875V3.375c0-1.036.84-1.875 1.875-1.875zM12.75 12a.75.75 0 00-1.5 0v2.25H9a.75.75 0 000 1.5h2.25V18a.75.75 0 001.5 0v-2.25H15a.75.75 0 000-1.5h-2.25V12z" clip-rule="evenodd" />
+								<path d="M14.25 5.25a5.23 5.23 0 00-1.279-3.434 9.768 9.768 0 016.963 6.963A5.23 5.23 0 0016.5 7.5h-1.875a.375.375 0 01-.375-.375V5.25z" />
+							</svg>
+						</Hint>
+					</button>
+				</div>
+			{/if}
 			  
 
 		</div>
@@ -426,7 +460,7 @@
 			
 			<!-- make this one bar -->
 			<div class="flex items-center justify-center top-[450px]">     
-				{#if deadlineContents && deadlineContents.length > 0}
+				{#if deadlineContents && deadlineContents.length > 0 && !deadline_is_complete}
 
 				<!-- Create -->
 				<button 
@@ -479,16 +513,13 @@
 					</button>
 				{/if}
 
+				{:else if deadline_is_complete}
+					<div class="h-7 w-full font-mono relative z-30 text-platinum inline-flex items-center justify-center px-8 py-4 overflow-hidden font-bold text-gray-500 transition-all border border-gray-200 rounded-b-lg cursor-not-allowed group ease border-columbia  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-75">
+						deadline past: return home and reset it
+					</div>
 				{:else}
-					<!-- create deck -->
 					<div class="h-8 w-full font-mono relative z-30 text-platinum inline-flex items-center justify-center px-8 py-4 overflow-hidden font-bold text-gray-500 transition-all border border-gray-200 rounded-b-lg cursor-not-allowed group ease border-columbia  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-75">
 						create deck before adding cards
-							<!-- <svg 
-								class="fill-columbia bg-inherit cursor-pointer h-6 mb-1  outline-columbia focus:outline outline-4 outline-offset-2 " 
-								xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" >
-								<path fill-rule="evenodd" d="M5.625 1.5H9a3.75 3.75 0 013.75 3.75v1.875c0 1.036.84 1.875 1.875 1.875H16.5a3.75 3.75 0 013.75 3.75v7.875c0 1.035-.84 1.875-1.875 1.875H5.625a1.875 1.875 0 01-1.875-1.875V3.375c0-1.036.84-1.875 1.875-1.875zM12.75 12a.75.75 0 00-1.5 0v2.25H9a.75.75 0 000 1.5h2.25V18a.75.75 0 001.5 0v-2.25H15a.75.75 0 000-1.5h-2.25V12z" clip-rule="evenodd" />
-								<path d="M14.25 5.25a5.23 5.23 0 00-1.279-3.434 9.768 9.768 0 016.963 6.963A5.23 5.23 0 0016.5 7.5h-1.875a.375.375 0 01-.375-.375V5.25z" />
-							</svg> -->
 					</div>
 					
 				{/if}
@@ -551,14 +582,14 @@
 
 					<!-- card fields -->
 						
-						<div class="ml-3 mr-0 w-1/2 m-3 rounded-lg border-l border-columbia border-spacing-4 px-2 py-2">
+						<div on:focusout={() => updateCard(card.card)}  class="ml-3 mr-0 w-1/2 m-3 rounded-lg border-l border-columbia border-spacing-4 px-2 py-2">
 							<TextfieldEditor bind:content={card.card.front} is_gallery={true}/>
 						</div>
 
 						<div class="border-r-2 opacity-30 border-columbia"></div>
 
 						<!-- <div class="card-hr mt-5" /> -->
-						<div class="ml-0 mr-1 w-1/2 my-3 border-r rounded-lg rounded-tr-sm border-columbia border-spacing-4 px-4 py-2">
+						<div on:focusout={() => updateCard(card.card)} class="ml-0 mr-1 w-1/2 my-3 border-r rounded-lg rounded-tr-sm border-columbia border-spacing-4 px-4 py-2">
 							<TextfieldEditor bind:content={card.card.back} is_gallery={true}/>
 						</div>
 

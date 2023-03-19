@@ -56,6 +56,7 @@ use diesel::Connection;
 use dotenvy::dotenv;
 use std::env;
 
+// ../migrations
 
 pub fn establish_connection() -> PgConnection {
   dotenv().ok();
@@ -70,6 +71,12 @@ pub fn establish_connection() -> PgConnection {
 /*
  * Run builder code
  */
+// #[macro_use]
+// extern crate diesel_migrations;
+
+
+// embed_migrations!("migrations");
+
 fn main() {
   let mut conn = establish_connection();
 

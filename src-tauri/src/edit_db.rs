@@ -31,8 +31,7 @@ pub struct DeckNewContents {
 }
 
 use crate::home_db::{
-    compute_num_boxes_from_id,
-    naive_to_fixedoffset
+    compute_num_boxes_from_id, naive_to_localoffset
 };
 
 
@@ -176,7 +175,7 @@ pub fn delete_card(state: tauri::State<DatabaseState>, card_id: i32) {
 
 // create cards, returning ids of returned cards
 /**
- * Creates cards in deck_contents into the `cards` table associated with teh proper deck 
+ * Creates cards in deck_contents into the `cards` table associated with the proper deck 
  */
 #[tauri::command]
 pub fn create_cards(state: tauri::State<DatabaseState>, deadline_id: i32, deck_new_contents: DeckNewContents) -> Vec<i32> {
@@ -216,7 +215,7 @@ pub fn create_cards(state: tauri::State<DatabaseState>, deadline_id: i32, deck_n
  * Allows a user to change the contents of a card with the changes saving
  */
 #[tauri::command]
-pub fn update_card(state: tauri::State<DatabaseState>, _deadline_id: i32, _deck_id: i32, card: Card) {
+pub fn update_card(state: tauri::State<DatabaseState>, card: Card) {
     use crate::schema::cards;
     
     let conn= &mut *state.conn.lock().unwrap();
@@ -224,7 +223,7 @@ pub fn update_card(state: tauri::State<DatabaseState>, _deadline_id: i32, _deck_
     // add new cards to `cards` database
     update(cards::table)
         .filter(cards::id.eq(card.id))
-        .set(card)
+        .set((cards::front.eq(card.front), cards::back.eq(card.back)))
         .execute(conn)
         .expect("failed to insert quota record");
 }
@@ -248,8 +247,10 @@ pub fn get_days_to_go(conn: &mut PgConnection, deadline_id: i32) -> i32 {
         .get_result::<NaiveDateTime>(conn)
         .expect("failed to get deadline date");
 
+    let fixed_offset_date_time = naive_to_localoffset(deadline_date);
+
     let days_to_go = days_until_deadline(
-        naive_to_fixedoffset(deadline_date), 
+        fixed_offset_date_time,
         2,
         14
     ) as i32;
