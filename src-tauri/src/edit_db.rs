@@ -238,7 +238,7 @@ use crate::models::QuotaRecord;
 use crate::utils_db::days_until_deadline;
 
 
-pub fn get_days_to_go(conn: &mut PgConnection, deadline_id: i32) -> i32 {
+pub fn get_days_to_go(conn: &mut SqliteConnection, deadline_id: i32) -> i32 {
     use crate::schema::deadlines;
 
     let deadline_date = deadlines::table
@@ -258,7 +258,7 @@ pub fn get_days_to_go(conn: &mut PgConnection, deadline_id: i32) -> i32 {
     days_to_go
 }
 
-pub fn write_quotas(conn: &mut PgConnection, deadline_id: i32, deck_id: i32, num_cards: i32) {
+pub fn write_quotas(conn: &mut SqliteConnection, deadline_id: i32, deck_id: i32, num_cards: i32) {
 
     use crate::schema::quotas;
     // write quotas for `num_new` new cards
@@ -412,7 +412,7 @@ pub fn write_text_field(state: tauri::State<DatabaseState>, is_text_field: bool)
  * This function arises from the scheme where quotas are computed only based on
  * number of cards and days until deadline
  */
-pub fn discount_past_progressions(conn: &mut PgConnection, new_quotas: &mut Vec<QuotaRecord>, deck_id: i32) {
+pub fn discount_past_progressions(conn: &mut SqliteConnection, new_quotas: &mut Vec<QuotaRecord>, deck_id: i32) {
      use crate::schema::{cards, deckitems};
 
     if new_quotas.len() == 1 {

@@ -50,19 +50,20 @@ use review_db::{
 };
 
 
-use diesel::pg::PgConnection;
-
+// use diesel::pg::SqliteConnection;
+use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
+
 use dotenvy::dotenv;
 use std::env;
 
 // ../migrations
 
-pub fn establish_connection() -> PgConnection {
+pub fn establish_connection() -> SqliteConnection {
   dotenv().ok();
 
   let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-  PgConnection::establish(&database_url)
+  SqliteConnection::establish(&database_url)
       .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
 

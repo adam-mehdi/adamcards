@@ -23,7 +23,7 @@ use crate::review_db::handle_missed_days;
 
 
 pub struct DatabaseState {
-    pub conn: Arc<Mutex<PgConnection>>,
+    pub conn: Arc<Mutex<SqliteConnection>>,
 }
 
 
@@ -75,7 +75,7 @@ pub struct ProgressData {
     tot_days: i32
 }
 
-pub fn folder_system_is_empty(conn: &mut PgConnection) -> bool {
+pub fn folder_system_is_empty(conn: &mut SqliteConnection) -> bool {
     use crate::schema::folders;
     let all_folders = folders::table
         .select(folders::id)
@@ -180,7 +180,7 @@ pub fn read_folder_system(state: tauri::State<DatabaseState>) -> Option<FolderSy
 }
 
 
-fn compute_quotas_(conn: &mut PgConnection, mut folder_system: FolderSystem) -> FolderSystem {
+fn compute_quotas_(conn: &mut SqliteConnection, mut folder_system: FolderSystem) -> FolderSystem {
     use crate::schema::{quotas, parents};
 
     // first write the quotas of all of the decks
@@ -272,7 +272,7 @@ fn compute_quotas_(conn: &mut PgConnection, mut folder_system: FolderSystem) -> 
  *  entry_id: id of entry to give a type to
  *  
  */
-fn get_entry_type(conn: &mut PgConnection, entry_id: i32) -> Result<String, Error> {
+fn get_entry_type(conn: &mut SqliteConnection, entry_id: i32) -> Result<String, Error> {
     use crate::schema::{folders, decks, deadlines};
 
     let folder_id = folders::table
@@ -510,7 +510,7 @@ pub fn is_duplicate_name(state: tauri::State<DatabaseState>, parent_id: Option<i
 /**
  * Initializes root folder for first startup of app
  */
-pub fn init_root_folder(conn: &mut PgConnection) {
+pub fn init_root_folder(conn: &mut SqliteConnection) {
     if !folder_system_is_empty(conn) {
         return;
     }
@@ -520,14 +520,15 @@ pub fn init_root_folder(conn: &mut PgConnection) {
     let is_expanded: Option<bool> = Some(true);
 
     // create_entry(state, "My Trunk", None, md);
-    let new_entry: Entry = insert_into(entries::table)
+    let new_entry  = insert_into(entries::table)
         .values((entries::name.eq(entry_name), entries::is_expanded.eq(is_expanded)))
-        .get_result(conn)
+        .returning(entries::id)
+        .get_results::<i32>(conn)
         .unwrap();
 
     // insert into specialized relation `Folder`/`Deadline`/`Deck` using id
     insert_into(folders::table)
-        .values(folders::id.eq(new_entry.id))
+        .values(folders::id.eq(new_entry))
         .execute(conn)
         .expect("failed to initialize root folder");
 
@@ -591,7 +592,7 @@ pub fn get_deadline_date(state: tauri::State<DatabaseState>, deadline_id: i32) -
 
 }
 
-pub fn compute_num_boxes_from_id(conn: &mut PgConnection, parent_id: i32) -> i32 {
+pub fn compute_num_boxes_from_id(conn: &mut SqliteConnection, parent_id: i32) -> i32 {
     use crate::schema::deadlines;
 
     let deadline_info = deadlines::table
