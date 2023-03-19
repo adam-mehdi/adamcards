@@ -139,7 +139,7 @@ pub struct QuotaTempRecord {
   pub rqp: i32  // review_quota_practiced
 }
 
-pub fn handle_missed_days(conn: &mut PgConnection, deck_id: i32, days_to_go: &i32) {
+pub fn handle_missed_days(conn: &mut SqliteConnection, deck_id: i32, days_to_go: &i32) {
     use crate::schema::quotas;
     let mut curr_idx = *days_to_go as usize;
 
@@ -228,7 +228,7 @@ pub fn handle_missed_days(conn: &mut PgConnection, deck_id: i32, days_to_go: &i3
 
 
 
-fn get_deck_ids(conn: &mut PgConnection, deadline_id: i32) -> Vec<i32> {
+fn get_deck_ids(conn: &mut SqliteConnection, deadline_id: i32) -> Vec<i32> {
     use crate::schema::parents;
     parents::table
         .filter(parents::parent_id.eq(deadline_id))
@@ -237,7 +237,7 @@ fn get_deck_ids(conn: &mut PgConnection, deadline_id: i32) -> Vec<i32> {
         .expect("failed to get deck ids")
 }
 
-fn get_deadline_quotas(conn: &mut PgConnection, deck_ids: &Vec<i32>, days_to_go: &i32) -> Vec<Quota> {
+fn get_deadline_quotas(conn: &mut SqliteConnection, deck_ids: &Vec<i32>, days_to_go: &i32) -> Vec<Quota> {
     use crate::schema::quotas;
 
     let mut quotas = Vec::new();
@@ -271,7 +271,7 @@ fn get_deadline_quotas(conn: &mut PgConnection, deck_ids: &Vec<i32>, days_to_go:
     quotas
 }
 
-fn get_deadline_summed_quota(conn: &mut PgConnection, deck_ids: &Vec<i32>, days_to_go: &i32) -> Quota {
+fn get_deadline_summed_quota(conn: &mut SqliteConnection, deck_ids: &Vec<i32>, days_to_go: &i32) -> Quota {
     use crate::schema::quotas;
 
     let quotas = quotas::table
@@ -291,7 +291,7 @@ fn get_deadline_summed_quota(conn: &mut PgConnection, deck_ids: &Vec<i32>, days_
 
 }
 
-// fn get_deck_quota(conn: &mut PgConnection, deck_id: i32, days_to_go: &i32) -> Quota {
+// fn get_deck_quota(conn: &mut SqliteConnection, deck_id: i32, days_to_go: &i32) -> Quota {
 //     use crate::schema::quotas;
 
 //     let quotas = quotas::table
@@ -357,7 +357,7 @@ pub fn get_next_card(state: State<DatabaseState>, review_state: State<ReviewSess
 
  }
 
-fn pop_new_card(conn: &mut PgConnection, new_ids: &Vec<i32>, deck_id: i32) -> ReviewCard { 
+fn pop_new_card(conn: &mut SqliteConnection, new_ids: &Vec<i32>, deck_id: i32) -> ReviewCard { 
     use crate::schema::{cards, deckitems, entries};
     use diesel::prelude::*;
 
@@ -366,7 +366,8 @@ fn pop_new_card(conn: &mut PgConnection, new_ids: &Vec<i32>, deck_id: i32) -> Re
         .inner_join(deckitems::table.on(cards::id.eq(deckitems::item_id)))
         .filter(cards::id.eq_any(new_ids).and(deckitems::deck_id.eq(deck_id)))
         .select((cards::id, cards::front, cards::back))
-        .order(cards::queue_score.asc().nulls_first()) // nulls_first means nulls come first with ascending order
+        .order(cards::queue_score.asc())
+        // .order(cards::queue_score.asc().nulls_first()) // nulls_first means nulls come first with ascending order
         .first::<(i32, String, String)>(conn)
         .expect("failed to pop new card");
 
@@ -391,7 +392,7 @@ fn pop_new_card(conn: &mut PgConnection, new_ids: &Vec<i32>, deck_id: i32) -> Re
 
 }
 
-fn pop_review_card(conn: &mut PgConnection, deck_id: i32) -> ReviewCard { 
+fn pop_review_card(conn: &mut SqliteConnection, deck_id: i32) -> ReviewCard { 
     use crate::schema::{cards, deckitems, entries};
 
 
@@ -528,9 +529,9 @@ pub fn record_response(
     update(cards::table)
         .filter(cards::id.eq(card.card.id))
         .set((cards::box_position.eq(cards::box_position + box_pos_delta), cards::front.eq(card.card.front), cards::back.eq(card.card.back), cards::queue_score.eq(get_queue_score())))
-        .returning(cards::box_position)
-        .get_result::<i32>(conn)
+        .execute(conn)
         .expect("failed to update card box pos");
+
 
     // get deck id
     let deck_id = deckitems::table
@@ -580,7 +581,7 @@ pub fn record_response(
     
 }
 
-fn get_box_pos_delta(conn: &mut PgConnection, score: i32, card_id: &i32) -> i32 {
+fn get_box_pos_delta(conn: &mut SqliteConnection, score: i32, card_id: &i32) -> i32 {
     use crate::schema::cards;
 
     let box_pos = cards::table
@@ -649,13 +650,17 @@ pub fn get_last_card(state: State<DatabaseState>, review_state: State<ReviewSess
                 .expect("failed to get deck name");
 
             // update box position of card and return its contents
-            let card = update(cards::table)
+            update(cards::table)
                 .filter(cards::id.eq(response.card_id))
                 .set(cards::box_position.eq(cards::box_position - response.box_pos_delta.unwrap()))
-                .returning((cards::id, cards::front, cards::back))
+                .execute(conn)
+                .expect("failed to update box pos");
+            let card = cards::table
+                .filter(cards::id.eq(response.card_id))
+                .select((cards::id, cards::front, cards::back))
                 .get_result::<(i32, String, String)>(conn)
                 .expect("failed to get card contents");
-
+                
             let card_results = Some(CardResults {
                 stack_after: response.stack_after.clone(),
                 user_answer: response.user_answer.clone(),

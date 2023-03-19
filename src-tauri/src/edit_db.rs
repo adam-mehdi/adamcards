@@ -104,9 +104,14 @@ pub fn delete_card(state: tauri::State<DatabaseState>, card_id: i32) {
         .get_result::<i32>(conn)
         .expect("failed to retrieve deadline id");
 
-    let box_pos = delete(cards::table.filter(cards::id.eq(card_id)))
-        .returning(cards::box_position)
+    let box_pos = cards::table
+        .filter(cards::id.eq(card_id))
+        .select(cards::box_position)
         .get_result::<i32>(conn)
+        .expect("failed to get box pos");
+
+    delete(cards::table.filter(cards::id.eq(card_id)))
+        .execute(conn)
         .expect("failed to delete deck item");
     
     delete(deckitems::table.filter(deckitems::item_id.eq(card_id)))
@@ -187,11 +192,16 @@ pub fn create_cards(state: tauri::State<DatabaseState>, deadline_id: i32, deck_n
 
     let mut card_ids = Vec::new();
     for new_card in deck_new_contents.cards {
-        let card_id = insert_into(deckitems::table)
+        insert_into(deckitems::table)
             .values(deckitems::deck_id.eq(deck_new_contents.deck_id))
-            .returning(deckitems::item_id)
-            .get_result::<i32>(conn)
+            .execute(conn)
             .expect("failed to assign deck to card");
+        let card_id = deckitems::table
+            .filter(deckitems::deck_id.eq(deck_new_contents.deck_id))
+            .select(deckitems::item_id)
+            .order(deckitems::item_id.desc())
+            .first::<i32>(conn)
+            .expect("failed to get newly inserted card id");
 
         insert_into(cards::table)
             .values((cards::front.eq(new_card.front), cards::back.eq(new_card.back), cards::id.eq(card_id), cards::box_position.eq(0)))
