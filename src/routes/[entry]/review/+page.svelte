@@ -123,7 +123,7 @@
 		new_stack.splice(insert_idx, 0, studying_id);
 		// id2idx.set(buf_card.card.id, study_idx);
 
-		if (new_stack.length == 1) {
+		if (new_stack.length == 1 && score != 1) {
 			cardIsRevealed = false;
 			stacks = stacks;
 			await sleep(900); // hack to avoid frontend rendering bug

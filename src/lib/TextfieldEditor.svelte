@@ -6,7 +6,6 @@
     import Paragraph from '@tiptap/extension-paragraph';
     import Typography from '@tiptap/extension-typography'
     
-    interface Card { id: number, front: string, back: string }
   
     let element: HTMLElement
     
@@ -61,6 +60,7 @@
                 attributes: {
                     class: 'prose dark:prose-invert prose-md mx-auto focus:outline-none font-sans code:font-mono leading-7',
                 },
+                
             },
             content: content,
             autofocus: autofocus,
@@ -101,7 +101,7 @@
   <div 
     bind:this={element} 
     class="ProseMirror" 
-    style="{!is_answerbar ? `max-height: ${max_height}` : ""}; min-height: {min_height}; overflow: {overflow}"
+    style="{!is_answerbar ? `max-height: ${max_height};` : "padding-right: 23px;"}; min-height: {min_height}; overflow: {overflow}"
     />
 </div>
 
@@ -115,5 +115,6 @@
     .ProseMirror:focus {
         outline: none;
     }
+
 
   </style>

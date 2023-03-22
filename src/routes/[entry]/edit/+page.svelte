@@ -5,6 +5,7 @@
 	import { invoke } from '@tauri-apps/api/tauri';
 	import configStore from '$lib/stores/configStore'
 	import Hint from 'svelte-hint';
+	import {clickOutside} from '$lib/actions/click_outside.js';
 
 	import { onMount, onDestroy } from 'svelte'
 	import TextfieldEditor from '$lib/TextfieldEditor.svelte'
@@ -389,7 +390,7 @@
 			</div>
 
 			{#if !deadline_is_complete}
-				<div class="bg-offwhite z-50 dark:bg-offblack">
+				<div class="bg-offwhite z-50 dark:bg-offblack" >
 					<button on:click={toggleCreateDeckTray} class="h-9 w-9 z-50 dark:bg-offblack ring-columbia mt-1 focus:outline-none focus:ring duration-75 rounded-md">
 						<Hint placement="bottom" text="Create deck">
 							<svg 
@@ -407,7 +408,8 @@
 		</div>
 		{#if createDeckTrayOpen}
 			<form class="w-1/3 absolute left-40 py-1 z-50 bg-offwhite dark:bg-offblack dark:text-whitetext"
-					on:submit={createDeck}>
+					on:submit={createDeck} use:clickOutside on:click_outside={toggleCreateDeckTray}>
+					<!-- disregard the above warning -->
 				<div class="border p-4 rounded-lg rounded-tl-sm border-columbia py-2 grid grid-rows-2 grid-cols-3 gap-2">
 					<!-- name for Create -->
 					<input type="text" use:focus placeholder="Enter Deck Name" bind:value={newName} class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75"/>

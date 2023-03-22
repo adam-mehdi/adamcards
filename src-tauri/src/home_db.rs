@@ -15,8 +15,6 @@ use diesel::{insert_into, delete, update};
 use diesel::prelude::*;
 use diesel::result::Error;
 
-use crate::models::Entry;
-
 use crate::utils_db::get_num_boxes;
 use crate::edit_db::{get_days_to_go, write_quotas};
 use crate::review_db::handle_missed_days;
@@ -324,9 +322,15 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
 
 
     // insert into generalized relation `Entry`
-    let new_entry: Entry = insert_into(entries::table)
+    insert_into(entries::table)
         .values((entries::name.eq(entry_name), entries::is_expanded.eq(is_expanded)))
-        .get_result(conn)
+        .execute(conn)
+        .unwrap();
+    let entry_id = entries::table
+        .filter(entries::name.eq(entry_name))
+        .order(entries::id.desc())
+        .select(entries::id)
+        .first::<i32>(conn)
         .unwrap();
 
     let entry_type = md.entry_type.as_str();
@@ -335,7 +339,7 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
     match entry_type {
         "folder" => {
                 insert_into(folders::table)
-                    .values(folders::id.eq(new_entry.id))
+                    .values(folders::id.eq(entry_id))
                     .execute(conn)
                     .unwrap();
         },
@@ -344,8 +348,8 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
             
             insert_into(deadlines::table)
                 .values((
-                    deadlines::id.eq(new_entry.id), 
-                    deadlines::deadline_date.eq(deadline),
+                    deadlines::id.eq(entry_id), 
+                    deadlines::deadline_date.eq(deadline.naive_local()),
                     deadlines::date_created.eq(get_current_time()),
                     deadlines::study_intensity.eq(md.study_intensity.unwrap()),
                     deadlines::num_reset.eq(0)
@@ -358,7 +362,7 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
             let num_boxes = compute_num_boxes_from_id(conn, dl_id);
             insert_into(decks::table)
                 .values((
-                    decks::id.eq(new_entry.id),
+                    decks::id.eq(entry_id),
                     decks::date_created.eq(get_current_time()),
                     decks::num_boxes.eq(num_boxes)
                 ))
@@ -371,7 +375,7 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
 
     if let Some(pid) = parent_id {
         insert_into(parents::table)
-            .values((parents::child_id.eq(new_entry.id), parents::parent_id.eq(pid)))
+            .values((parents::child_id.eq(entry_id), parents::parent_id.eq(pid)))
             .execute(conn)
             .unwrap();
     }
@@ -520,21 +524,28 @@ pub fn init_root_folder(conn: &mut SqliteConnection) {
     let is_expanded: Option<bool> = Some(true);
 
     // create_entry(state, "My Trunk", None, md);
-    let new_entry  = insert_into(entries::table)
+    insert_into(entries::table)
         .values((entries::name.eq(entry_name), entries::is_expanded.eq(is_expanded)))
-        .returning(entries::id)
-        .get_results::<i32>(conn)
+        .execute(conn)
         .unwrap();
+    let entry_id = entries::table
+        .filter(entries::name.eq(entry_name))
+        .order(entries::id.desc())
+        .select(entries::id)
+        .first::<i32>(conn)
+        .unwrap();
+
+    
 
     // insert into specialized relation `Folder`/`Deadline`/`Deck` using id
     insert_into(folders::table)
-        .values(folders::id.eq(new_entry))
+        .values(folders::id.eq(entry_id))
         .execute(conn)
         .expect("failed to initialize root folder");
 
 
     insert_into(userconfig::table)
-        .values((userconfig::is_dark_mode.eq(false), userconfig::is_text_field.eq(false)))
+        .values((userconfig::is_dark_mode.eq(true), userconfig::is_text_field.eq(false)))
         .execute(conn)
         .expect("failed to initialize user config");
 }
@@ -582,9 +593,8 @@ pub fn get_deadline_date(state: tauri::State<DatabaseState>, deadline_id: i32) -
     // deadline date represents UTC timezone; convert it to local
     
 
-    let deadline_date = Local.from_utc_datetime(&deadline_date).naive_local();
-    let formatted_date = Local.from_local_datetime(&deadline_date)
-        .unwrap().format("%b %d %H:%M").to_string();
+    let deadline_date = Local.from_local_datetime(&deadline_date).unwrap().naive_local();
+    let formatted_date = deadline_date.format("%b %d %H:%M").to_string();
 
     let is_complete = naive_to_localoffset(deadline_date).timestamp() < Local::now().timestamp();
 
@@ -632,8 +642,7 @@ pub fn reset_deadline(
 
     update(deadlines::table)
         .filter(deadlines::id.eq(deadline_id))
-        .set((deadlines::num_reset.eq(deadlines::num_reset + 1), deadlines::study_intensity.eq(study_intensity), deadlines::deadline_date.eq(deadline)))
-        .returning(deadlines::num_reset)
+        .set((deadlines::num_reset.eq(deadlines::num_reset + 1), deadlines::study_intensity.eq(study_intensity), deadlines::deadline_date.eq(deadline.naive_local())))
         .execute(conn)
         .expect("failed to update deadline num reset");
     

@@ -54,15 +54,32 @@ use review_db::{
 use diesel::sqlite::SqliteConnection;
 use diesel::Connection;
 
-use dotenvy::dotenv;
+// use dotenvy::dotenv;
 use std::env;
+use dotenvy::dotenv;
 
 // ../migrations
+
+// pub fn establish_connection() -> SqliteConnection {
+//   let database_url = "./trunk.db";
+ 
+//   SqliteConnection::establish(&database_url)
+//     .expect(&format!("Error connecting to {}", database_url))
+// }
+
+// #[macro_use]
+// extern crate diesel_migrations;
+
+// use diesel_migrations::{embed_migrations};
+// embed_migrations!("../migrations");
+
 
 pub fn establish_connection() -> SqliteConnection {
   dotenv().ok();
 
-  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+  // let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+  // let database_url = "./trunk.db";
+  let database_url = "src-tauri/trunk.db";
   SqliteConnection::establish(&database_url)
       .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
@@ -80,10 +97,7 @@ pub fn establish_connection() -> SqliteConnection {
 
 fn main() {
   let mut conn = establish_connection();
-
-  // run_migrations(&mut conn).unwrap();
-
-  // embedded_migrations::run(&conn).expect("Error migrating");
+  run_migrations(&mut conn).expect("Error embedding migrations");
 
   init_root_folder(&mut conn);
 
@@ -149,3 +163,19 @@ fn main() {
 
 }
 
+
+use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
+use std::error::Error;
+
+
+fn run_migrations(connection: &mut impl MigrationHarness<diesel::sqlite::Sqlite>) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
+
+    // This will run the necessary migrations.
+    //
+    // See the documentation for `MigrationHarness` for
+    // all available methods.
+    connection.run_pending_migrations(MIGRATIONS)?;
+
+    Ok(())
+}
