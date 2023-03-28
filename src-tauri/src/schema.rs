@@ -1,55 +1,50 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    cardhistory (card_id) {
-        card_id -> Integer,
-        review_time -> Timestamp,
-        user_response -> Nullable<Integer>,
-        duration_to_respond -> Nullable<Integer>,
-        box_position_initial -> Nullable<Integer>,
+    ankiquotas (deck_id, date_practiced) {
+        deck_id -> Integer,
+        date_practiced -> Date,
+        new_practiced -> Integer,
+        review_practiced -> Integer,
     }
 }
 
 diesel::table! {
     cards (id) {
         id -> Integer,
+        deck_id -> Integer,
         front -> Text,
         back -> Text,
         queue_score -> Nullable<Integer>,
-        box_position -> Integer,
+        box_position -> Nullable<Integer>,
+        repetitions -> Nullable<Integer>,
+        easiness -> Nullable<Float>,
+        interval -> Nullable<Integer>,
+        next_practice -> Nullable<Date>,
+        rephrasing1 -> Nullable<Text>,
+        rephrasing2 -> Nullable<Text>,
+        rephrasing3 -> Nullable<Text>,
+        rephrasing4 -> Nullable<Text>,
+        rephrasing5 -> Nullable<Text>,
+        explanation -> Nullable<Text>,
     }
 }
 
 diesel::table! {
     deadlines (id) {
         id -> Integer,
-        date_created -> Timestamp,
-        deadline_date -> Timestamp,
+        deadline_date -> Nullable<Timestamp>,
         study_intensity -> Nullable<Integer>,
-        num_reset -> Integer,
-    }
-}
-
-diesel::table! {
-    deckitems (item_id) {
-        item_id -> Integer,
-        deck_id -> Integer,
+        num_reset -> Nullable<Integer>,
+        is_anki -> Bool,
     }
 }
 
 diesel::table! {
     decks (id) {
         id -> Integer,
-        date_created -> Timestamp,
-        num_boxes -> Integer,
-    }
-}
-
-diesel::table! {
-    documents (id) {
-        id -> Integer,
-        source_text -> Nullable<Binary>,
-        notes -> Nullable<Text>,
+        num_boxes -> Nullable<Integer>,
+        new_per_day -> Nullable<Integer>,
     }
 }
 
@@ -64,14 +59,6 @@ diesel::table! {
 diesel::table! {
     folders (id) {
         id -> Integer,
-    }
-}
-
-diesel::table! {
-    media (id) {
-        id -> Integer,
-        content -> Nullable<Binary>,
-        entry_id -> Nullable<Integer>,
     }
 }
 
@@ -103,16 +90,19 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(ankiquotas -> decks (deck_id));
+diesel::joinable!(cards -> decks (deck_id));
+diesel::joinable!(deadlines -> entries (id));
+diesel::joinable!(decks -> entries (id));
+diesel::joinable!(folders -> entries (id));
+
 diesel::allow_tables_to_appear_in_same_query!(
-    cardhistory,
+    ankiquotas,
     cards,
     deadlines,
-    deckitems,
     decks,
-    documents,
     entries,
     folders,
-    media,
     parents,
     quotas,
     userconfig,

@@ -33,11 +33,14 @@ pub struct DeckNewContents {
 use crate::home_db::{
     compute_num_boxes_from_id, naive_to_localoffset
 };
+use crate::utils_db::{
+    get_is_anki
+};
 
 
 #[tauri::command] 
 pub fn read_deadline_contents(state: tauri::State<DatabaseState>, deadline_id: i32) -> Vec<DeckContents> {
-    use crate::schema::{parents, deckitems, cards, entries};
+    use crate::schema::{parents, cards, entries};
     
     let conn= &mut *state.conn.lock().unwrap();
 
@@ -52,9 +55,9 @@ pub fn read_deadline_contents(state: tauri::State<DatabaseState>, deadline_id: i
     let mut deadline_contents: Vec<DeckContents> = Vec::new();
     // get card ids for each deck
     for deck_id in deck_ids {
-        let item_ids = deckitems::table
-            .filter(deckitems::deck_id.eq(deck_id))
-            .select(deckitems::item_id)
+        let item_ids = cards::table
+            .filter(cards::deck_id.eq(deck_id))
+            .select(cards::id)
             .load::<i32>(conn)
             .expect("failed to get item ids");
 
@@ -88,13 +91,13 @@ pub fn read_deadline_contents(state: tauri::State<DatabaseState>, deadline_id: i
 
 #[tauri::command]
 pub fn delete_card(state: tauri::State<DatabaseState>, card_id: i32) {
-    use crate::schema::{cards, deckitems, parents, quotas};
+    use crate::schema::{cards, parents, quotas};
 
     let conn= &mut *state.conn.lock().unwrap();
 
-    let deck_id = deckitems::table
-        .filter(deckitems::item_id.eq(card_id))
-        .select(deckitems::deck_id)
+    let deck_id = cards::table
+        .filter(cards::id.eq(card_id))
+        .select(cards::deck_id)
         .get_result::<i32>(conn)
         .expect("failed to retrieve deck id");
 
@@ -107,17 +110,19 @@ pub fn delete_card(state: tauri::State<DatabaseState>, card_id: i32) {
     let box_pos = cards::table
         .filter(cards::id.eq(card_id))
         .select(cards::box_position)
-        .get_result::<i32>(conn)
-        .expect("failed to get box pos");
+        .get_result::<Option<i32>>(conn)
+        .expect("failed to get box pos")
+        .expect("failed to unwrap box pos");
 
     delete(cards::table.filter(cards::id.eq(card_id)))
         .execute(conn)
         .expect("failed to delete deck item");
-    
-    delete(deckitems::table.filter(deckitems::item_id.eq(card_id)))
-        .execute(conn)
-        .expect("failed to delete deck item");
 
+    let is_anki = get_is_anki(conn, deadline_id);
+    if is_anki {
+        return;
+    }
+    
     let days_to_go = get_days_to_go(conn, deadline_id);
     let num_boxes = compute_num_boxes_from_id(conn, deadline_id);
 
@@ -184,39 +189,61 @@ pub fn delete_card(state: tauri::State<DatabaseState>, card_id: i32) {
  */
 #[tauri::command]
 pub fn create_cards(state: tauri::State<DatabaseState>, deadline_id: i32, deck_new_contents: DeckNewContents) -> Vec<i32> {
-    use crate::schema::{cards, deckitems};
     
     let conn= &mut *state.conn.lock().unwrap();
+    let deck_id = deck_new_contents.deck_id;
+
+    let is_anki = get_is_anki(conn, deadline_id);
 
     // add new cards to `cards` database
+    let card_ids = insert_deck_contents(conn, deck_new_contents, is_anki);
 
-    let mut card_ids = Vec::new();
-    for new_card in deck_new_contents.cards {
-        insert_into(deckitems::table)
-            .values(deckitems::deck_id.eq(deck_new_contents.deck_id))
-            .execute(conn)
-            .expect("failed to assign deck to card");
-        let card_id = deckitems::table
-            .filter(deckitems::deck_id.eq(deck_new_contents.deck_id))
-            .select(deckitems::item_id)
-            .order(deckitems::item_id.desc())
-            .first::<i32>(conn)
-            .expect("failed to get newly inserted card id");
-
-        insert_into(cards::table)
-            .values((cards::front.eq(new_card.front), cards::back.eq(new_card.back), cards::id.eq(card_id), cards::box_position.eq(0)))
-            .execute(conn)
-            .expect("failed to insert new cards");
-
-        card_ids.push(card_id);
+    if !is_anki {
+        // account for quotas
+        write_quotas(conn, deadline_id, deck_id, card_ids.len() as i32);
     }
-
-    // account for quotas
-    write_quotas(conn, deadline_id, deck_new_contents.deck_id, card_ids.len() as i32);
 
     // return ids of new cards
     card_ids
 
+}
+
+pub fn insert_deck_contents(conn: &mut SqliteConnection, deck_new_contents: DeckNewContents, is_anki: bool) -> Vec<i32> {
+    use crate::schema::cards;
+
+    let (box_pos, reps, easiness, interval) = if is_anki {
+        (None, Some(0), Some(2.5), Some(1))
+    } else {
+        (Some(0), None, None, None)
+    };
+
+    let mut card_ids = Vec::new();
+    let today = chrono::Local::now().date_naive();
+    for new_card in deck_new_contents.cards {
+        insert_into(cards::table)
+            .values((
+                cards::front.eq(new_card.front), 
+                cards::deck_id.eq(deck_new_contents.deck_id), 
+                cards::back.eq(new_card.back), 
+                cards::box_position.eq(box_pos), 
+                cards::next_practice.eq(today),
+                cards::repetitions.eq(reps), 
+                cards::interval.eq(interval), 
+                cards::easiness.eq(easiness)
+            ))
+            .execute(conn)
+            .expect("failed to insert new cards");
+
+        let card_id = cards::table
+            .filter(cards::deck_id.eq(deck_new_contents.deck_id))
+            .select(cards::id)
+            .order(cards::id.desc())
+            .first::<i32>(conn)
+            .expect("failed to get newly inserted card id");
+
+        card_ids.push(card_id);
+    }
+    card_ids
 }
 
 
@@ -254,8 +281,9 @@ pub fn get_days_to_go(conn: &mut SqliteConnection, deadline_id: i32) -> i32 {
     let deadline_date = deadlines::table
         .filter(deadlines::id.eq(deadline_id))
         .select(deadlines::deadline_date)
-        .get_result::<NaiveDateTime>(conn)
-        .expect("failed to get deadline date");
+        .get_result::<Option<NaiveDateTime>>(conn)
+        .expect("failed to get deadline date")
+        .expect("failed to unwrap deadline date");
 
     let fixed_offset_date_time = naive_to_localoffset(deadline_date);
 
@@ -423,19 +451,20 @@ pub fn write_text_field(state: tauri::State<DatabaseState>, is_text_field: bool)
  * number of cards and days until deadline
  */
 pub fn discount_past_progressions(conn: &mut SqliteConnection, new_quotas: &mut Vec<QuotaRecord>, deck_id: i32) {
-     use crate::schema::{cards, deckitems};
+     use crate::schema::cards;
 
     if new_quotas.len() == 1 {
         return;
     }
 
      // get array of card box positions in deck
-     let box_positions = deckitems::table
-        .inner_join(cards::table.on(cards::id.eq(deckitems::item_id)))
-        .filter(deckitems::deck_id.eq(deck_id))
+     let box_positions = cards::table
+        .filter(cards::deck_id.eq(deck_id))
         .select(cards::box_position)
-        .get_results::<i32>(conn)
+        .get_results::<Option<i32>>(conn)
         .expect("failed to get box positions");
+
+    let box_positions = box_positions.iter().map(|x| x.unwrap()).collect::<Vec<i32>>();
 
     // return if all new cards
     if box_positions.iter().sum::<i32>() == 0 {

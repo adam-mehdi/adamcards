@@ -1,4 +1,12 @@
+use diesel::update;
+use diesel::prelude::*;
+
+use tauri::State;
+
+use crate::home_db::DatabaseState;
+
 use std::cmp::max;
+use tauri;
 use chrono::{ 
   DateTime,
   Duration,
@@ -112,4 +120,124 @@ fn get_next_datetime_at_time(dt: DateTime<FixedOffset>, time: i64) -> DateTime<F
   let thresh_ts = dt.checked_add_signed(
     Duration::seconds(h_until_2am as i64 * 60 * 60 - m * 60 - s)).unwrap();
   thresh_ts
+}
+
+#[tauri::command]
+pub fn get_is_anki_frontend(state: State<DatabaseState>, deadline_id: i32) -> bool {
+  let conn= &mut *state.conn.lock().unwrap();
+  use crate::schema::deadlines;
+    deadlines::table
+        .find(deadline_id)
+        .select(deadlines::is_anki)
+        .first::<bool>(conn)
+        .expect("failed to get is_anki")
+}
+
+pub fn get_is_anki(conn: &mut SqliteConnection, deadline_id: i32) -> bool {
+  use crate::schema::deadlines;
+    deadlines::table
+        .find(deadline_id)
+        .select(deadlines::is_anki)
+        .first::<bool>(conn)
+        .expect("failed to get is_anki")
+}
+
+/**
+ * Count days in past where quota is not fulfilled, add unfilfilled progressions
+ * to today's quota, and redistribute quotas to even out study cost over days
+ */
+#[derive(Debug)]
+pub struct QuotaTempRecord {
+  pub dtg: i32, // days_to_go
+  pub nq: i32,  // new_quota
+  pub rq: i32,  // review_quota
+  pub nqp: i32, // new_quota_practiced
+  pub rqp: i32  // review_quota_practiced
+}
+
+pub fn handle_missed_days(conn: &mut SqliteConnection, deck_id: i32, days_to_go: &i32) {
+    use crate::schema::quotas;
+    let mut curr_idx = *days_to_go as usize;
+
+    // read quotas 
+    let quota_tuples = quotas::table
+        .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.lt(days_to_go + 1)))
+        .select((quotas::days_to_go, quotas::new_assigned, quotas::review_assigned, quotas::review_practiced, quotas::new_practiced))
+        .get_results::<(i32, i32, i32, i32, i32)>(conn)
+        .expect("failed to get quotas");
+
+    let mut quotas = Vec::new();
+    for t in quota_tuples {
+        quotas.push(
+            QuotaTempRecord { dtg: t.0, nq: t.1, rq: t.2, nqp: t.3, rqp: t.4 }
+        )
+    }
+
+    // if deadline has passed, act as if last day
+    if (curr_idx as i32) < 0 {
+        curr_idx = 0;
+    }
+
+    // return if no previous days
+    if curr_idx + 1 == quotas.len() {
+        return;
+    }
+
+    let (mut nq_missed, mut rq_missed) = (0, 0);
+    for i in (curr_idx + 1)..quotas.len() {
+        // count up number of progressions missed in the past
+        nq_missed += quotas[i].nq - quotas[i].nqp;
+        rq_missed += quotas[i].rq - quotas[i].rqp;
+
+        // set past quota to the amount that was practiced
+        quotas[i].nq = quotas[i].nqp;
+        quotas[i].rq = quotas[i].rqp;
+    }
+
+    // return if no missed days
+    if nq_missed == 0 && rq_missed == 0 {
+        return;
+    }
+
+    // add missed cards to today if it is the last day
+    if curr_idx == 0 {
+        quotas[curr_idx].nq += nq_missed;
+        quotas[curr_idx].rq += rq_missed;
+        return;
+    }
+
+
+
+    // add missed cards to days up to and including current day, without deadline day
+    let num_days = curr_idx as i32;
+    let new_per_day = nq_missed / num_days;
+    let new_rmdr = nq_missed - new_per_day * num_days;
+    let review_per_day = rq_missed / num_days;
+    let review_rmdr = rq_missed - review_per_day * num_days;
+
+    // distribute cards up to and including current day, skipping day of exam
+    for dtg in 1..=curr_idx {
+
+        // distribute burden for missed quotas on past days
+        quotas[dtg].nq += new_per_day;
+        quotas[dtg].rq += review_per_day;
+
+        // add remainder to proper days (semi-arbirarily chosen)
+        if dtg == 1 {
+            quotas[dtg].rq += review_rmdr;
+        } else if dtg == curr_idx {
+            quotas[dtg].nq += new_rmdr;
+        }
+
+    }
+
+    // update quotas database with new quotas
+    for quota in quotas {
+        update(quotas::table)
+            .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(quota.dtg)))
+            .set((quotas::new_assigned.eq(quota.nq), quotas::review_assigned.eq(quota.rq)))
+            .execute(conn)
+            .expect("failed to update quota");
+    }
+
 }

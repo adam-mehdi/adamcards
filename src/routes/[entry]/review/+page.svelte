@@ -54,11 +54,13 @@
 	// let id2idx: Map<number, Card>,
 	let currCard: ReviewCard;
 	const deadlineId: number = parseInt($page.params.entry);
+	let isAnki: boolean;
 
 	
 
 	// initializes frontend and backend state
 	async function initState() {
+		isAnki = await invoke("get_is_anki_frontend", { deadlineId });
 		let quota: Quota = await invoke('init_review_session', { deadlineId });
 
 
@@ -98,6 +100,7 @@
 		// re-render the DOM
 		userAnswer = '';
 		stacks = stacks;
+		console.log(await invoke("print_cards", {deadlineId}))
 	}
 
 	function updateCard(card: Card) {
@@ -107,11 +110,13 @@
 	let okayCanFire = false;
 	async function handleResponse(score: number) {
 		// prevent "Okay" from automatically firing		
-		if (score == 0 && !okayCanFire) {
+		if (score == 3 && !okayCanFire) {
 			okayCanFire = true;
 			return;
 		}
 		okayCanFire = false;
+
+		score = isAnki ? score : score - 3;
 
 		let stack_after: string = await invoke("record_response", { score, userAnswer, "card": currCard })
 
@@ -123,7 +128,7 @@
 		new_stack.splice(insert_idx, 0, studying_id);
 		// id2idx.set(buf_card.card.id, study_idx);
 
-		if (new_stack.length == 1 && score != 1) {
+		if (new_stack.length == 1 && (score < 3 && isAnki) || score < 1) {
 			cardIsRevealed = false;
 			stacks = stacks;
 			await sleep(900); // hack to avoid frontend rendering bug
@@ -258,6 +263,15 @@
 				getNextCard();
 			} 
 		}
+
+		if (activeElement != bar  && activeElement != front  && activeElement != back && cardIsRevealed) {
+			if (e.key == "0") 	   handleResponse(1)
+			else if (e.key == "1") handleResponse(2)
+			else if (e.key == "2") handleResponse(3)
+			else if (e.key == "3") handleResponse(4)
+			else if (e.key == "4") handleResponse(5)
+		}
+
 		
 	} 
 
@@ -358,31 +372,41 @@
 
 										<!-- answer bar -->
 										<div class="flex items-center justify-center top-[450px]">     
+											{#if isAnki}
+												<button 
+													on:click={() => handleResponse(1)}
+													class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
+													Again
+												</button>
+											{/if}
+										
 											<button 
-												on:click={() => handleResponse(-1)}
-												class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-												<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
-												<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
-												Hard 
+												on:click={() => handleResponse(2)}
+												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia {isAnki ? "" : "rounded-bl-lg" } cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
+												Hard
 											</button>
 
 											<button
-												on:click={() => handleResponse(0)}
-												on:keypress={() => handleResponse(0)}
+												on:click={() => handleResponse(3)}
+												on:keypress={() => handleResponse(3)}
 												autofocus
-												class="h-5 w-1/3 relative z-40 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-x border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-												<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
-												<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
+												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-40 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-x border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
 												Okay
 											</button>      
 
 											<button	
-												class="h-5 w-1/3 relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-r border-l border-columbia rounded-br-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-0"
-												on:click={() => handleResponse(1)} >
-												<span class="w-full h-0.5 absolute bottom-0 group-active:bg-transparent left-0 bg-gray-100"></span>
-												<span class="h-full w-0.5 absolute bottom-0 group-active:bg-transparent right-0 bg-gray-100"></span>
+												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-r border-l border-columbia {isAnki ? "" : "rounded-br-lg" } cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-0"
+												on:click={() => handleResponse(4)} >
 												Good
 											</button>    
+
+											{#if isAnki}
+												<button 
+													on:click={() => handleResponse(5)}
+													class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-br-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
+													Easy
+												</button>
+											{/if}
 										</div>       
 									{/if}
 

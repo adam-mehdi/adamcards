@@ -9,7 +9,7 @@ use diesel::prelude::*;
 use tauri;
 use tauri::State;
 
-use crate::home_db::DatabaseState;
+use crate::home_db::{DatabaseState, get_deck_quota, Quota};
 use crate::models::Card;
 
 use chrono::Local;
@@ -29,6 +29,13 @@ use rand::{Rng, distributions::WeightedIndex};
 
 
 use crate::edit_db::get_days_to_go;
+use crate::utils_db::{
+    get_is_anki
+};
+use crate::anki::{
+    pop_review_anki_card, 
+    update_card_anki
+};
 
 
 #[derive(Clone)]
@@ -50,12 +57,6 @@ pub struct ReviewSessionState {
 }
 
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct Quota {
-    pub new_left: i32,
-    pub review_left: i32,
-    pub num_progressed: i32,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ReviewCard {
@@ -79,7 +80,7 @@ pub fn init_review_session(
     review_state: State<ReviewSessionState>, 
     deadline_id: i32) -> Quota 
 { 
-    use crate::schema::{cards, deckitems};
+    use crate::schema::cards;
 
     let conn= &mut *state.conn.lock().unwrap();
     let days_to_go= &mut *review_state.days_to_go.lock().unwrap();
@@ -88,19 +89,19 @@ pub fn init_review_session(
 
     // record deadline id
     *id = Some(deadline_id);
-    
-    // record days_to_go
-    let dtg = get_days_to_go(conn, deadline_id);
-    *days_to_go = Some(dtg);
 
+    let is_anki = get_is_anki(conn, deadline_id);
     let deck_ids = get_deck_ids(conn, deadline_id);
-    
+    let mut quotas = Vec::new();
     for deck_id in &deck_ids {
-        handle_missed_days(conn, *deck_id, &dtg);
+        quotas.push(get_deck_quota(conn, *deck_id).expect("failed to get deck id"));
     }
-
-    // specify new_ids
-    let quotas = get_deadline_quotas(conn, &deck_ids, &dtg);
+    
+    if !is_anki {
+        // record days_to_go
+        let dtg = get_days_to_go(conn, deadline_id);
+        *days_to_go = Some(dtg);
+    }    
 
     // select which new cards to memorize today
     for i in 0..quotas.len() {
@@ -108,123 +109,31 @@ pub fn init_review_session(
             continue;
         }
 
-        let new_ids_deck: Vec<i32> = cards::table
-            .inner_join(deckitems::table.on(cards::id.eq(deckitems::item_id)))
-            .filter(deckitems::deck_id.eq(deck_ids[i]).and(cards::box_position.eq(0)))
-            .select(cards::id)
-            .limit(quotas[i].new_left as i64)
-            .get_results::<i32>(conn)
-            .expect("failed to get new ids");
+        let new_ids_deck: Vec<i32> = match is_anki {
+            true => cards::table
+                .filter(cards::deck_id.eq(deck_ids[i]).and(cards::repetitions.eq(0)))
+                .select(cards::id)
+                .limit(quotas[i].new_left as i64)
+                .get_results::<i32>(conn)
+                .expect("failed to get new ids"),
+            false => cards::table
+                .filter(cards::deck_id.eq(deck_ids[i]).and(cards::box_position.eq(0)))
+                .select(cards::id)
+                .limit(quotas[i].new_left as i64)
+                .get_results::<i32>(conn)
+                .expect("failed to get new ids")
+        };
 
         new_ids.extend_from_slice(&new_ids_deck);
     }
     
 
-    get_deadline_summed_quota(conn, &deck_ids, &dtg)
+    get_deadline_summed_quota(quotas)
 
 
 }
 
 
-/**
- * Count days in past where quota is not fulfilled, add unfilfilled progressions
- * to today's quota, and redistribute quotas to even out study cost over days
- */
-#[derive(Debug)]
-pub struct QuotaTempRecord {
-  pub dtg: i32, // days_to_go
-  pub nq: i32,  // new_quota
-  pub rq: i32,  // review_quota
-  pub nqp: i32, // new_quota_practiced
-  pub rqp: i32  // review_quota_practiced
-}
-
-pub fn handle_missed_days(conn: &mut SqliteConnection, deck_id: i32, days_to_go: &i32) {
-    use crate::schema::quotas;
-    let mut curr_idx = *days_to_go as usize;
-
-    // read quotas 
-    let quota_tuples = quotas::table
-        .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.lt(days_to_go + 1)))
-        .select((quotas::days_to_go, quotas::new_assigned, quotas::review_assigned, quotas::review_practiced, quotas::new_practiced))
-        .get_results::<(i32, i32, i32, i32, i32)>(conn)
-        .expect("failed to get quotas");
-
-    let mut quotas = Vec::new();
-    for t in quota_tuples {
-        quotas.push(
-            QuotaTempRecord { dtg: t.0, nq: t.1, rq: t.2, nqp: t.3, rqp: t.4 }
-        )
-    }
-
-    // if deadline has passed, act as if last day
-    if (curr_idx as i32) < 0 {
-        curr_idx = 0;
-    }
-
-    // return if no previous days
-    if curr_idx + 1 == quotas.len() {
-        return;
-    }
-
-    let (mut nq_missed, mut rq_missed) = (0, 0);
-    for i in (curr_idx + 1)..quotas.len() {
-        // count up number of progressions missed in the past
-        nq_missed += quotas[i].nq - quotas[i].nqp;
-        rq_missed += quotas[i].rq - quotas[i].rqp;
-
-        // set past quota to the amount that was practiced
-        quotas[i].nq = quotas[i].nqp;
-        quotas[i].rq = quotas[i].rqp;
-    }
-
-    // return if no missed days
-    if nq_missed == 0 && rq_missed == 0 {
-        return;
-    }
-
-    // add missed cards to today if it is the last day
-    if curr_idx == 0 {
-        quotas[curr_idx].nq += nq_missed;
-        quotas[curr_idx].rq += rq_missed;
-        return;
-    }
-
-
-
-    // add missed cards to days up to and including current day, without deadline day
-    let num_days = curr_idx as i32;
-    let new_per_day = nq_missed / num_days;
-    let new_rmdr = nq_missed - new_per_day * num_days;
-    let review_per_day = rq_missed / num_days;
-    let review_rmdr = rq_missed - review_per_day * num_days;
-
-    // distribute cards up to and including current day, skipping day of exam
-    for dtg in 1..=curr_idx {
-
-        // distribute burden for missed quotas on past days
-        quotas[dtg].nq += new_per_day;
-        quotas[dtg].rq += review_per_day;
-
-        // add remainder to proper days (semi-arbirarily chosen)
-        if dtg == 1 {
-            quotas[dtg].rq += review_rmdr;
-        } else if dtg == curr_idx {
-            quotas[dtg].nq += new_rmdr;
-        }
-
-    }
-
-    // update quotas database with new quotas
-    for quota in quotas {
-        update(quotas::table)
-            .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(quota.dtg)))
-            .set((quotas::new_assigned.eq(quota.nq), quotas::review_assigned.eq(quota.rq)))
-            .execute(conn)
-            .expect("failed to update quota");
-    }
-
-}
 
 
 
@@ -237,79 +146,48 @@ fn get_deck_ids(conn: &mut SqliteConnection, deadline_id: i32) -> Vec<i32> {
         .expect("failed to get deck ids")
 }
 
-fn get_deadline_quotas(conn: &mut SqliteConnection, deck_ids: &Vec<i32>, days_to_go: &i32) -> Vec<Quota> {
-    use crate::schema::quotas;
-
-    let mut quotas = Vec::new();
-    for deck_id in deck_ids {
-        let quota = quotas::table
-            .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(days_to_go)))
-            .select((quotas::new_assigned, quotas::review_assigned, quotas::new_practiced, quotas::review_practiced))
-            .get_result::<(i32, i32, i32, i32)>(conn)
-            .optional()
-            .expect("failed to retrieve quota records");
-
-        match quota {
-            Some(q) => quotas.push(
-                    Quota {
-                        new_left: q.0,
-                        review_left: q.1,
-                        num_progressed: q.2 + q.3
-                    }
-                ),
-            None => quotas.push( 
-                Quota { 
-                    new_left: 0, 
-                    review_left: 0, 
-                    num_progressed: 0 
-                }
-            )
-        }
-
-    }
-
-    quotas
-}
-
-fn get_deadline_summed_quota(conn: &mut SqliteConnection, deck_ids: &Vec<i32>, days_to_go: &i32) -> Quota {
-    use crate::schema::quotas;
-
-    let quotas = quotas::table
-        .filter(quotas::id.eq_any(deck_ids).and(quotas::days_to_go.eq(days_to_go)))
-        .select((quotas::new_assigned, quotas::review_assigned, quotas::new_practiced, quotas::review_practiced))
-        .get_results::<(i32, i32, i32, i32)>(conn)
-        .expect("failed to retrieve quota records");
+fn get_deadline_summed_quota(quotas: Vec<Quota>) -> Quota {
 
     let mut summed_quota = Quota { new_left: 0, review_left: 0, num_progressed: 0 };
     for quota in quotas {
-        summed_quota.new_left += quota.0;
-        summed_quota.review_left += quota.1;
-        summed_quota.num_progressed += quota.2;
+        summed_quota.new_left += quota.new_left;
+        summed_quota.review_left += quota.review_left;
+        summed_quota.num_progressed += quota.num_progressed;
     }
 
     summed_quota
 
 }
 
-// fn get_deck_quota(conn: &mut SqliteConnection, deck_id: i32, days_to_go: &i32) -> Quota {
-//     use crate::schema::quotas;
+#[derive(Serialize, Deserialize, Debug)]
+pub struct CardInfo {
+    pub deck_id: String,
+    pub front: String,
+    pub repetitions: i32,
+    pub interval: i32
+}
 
-//     let quotas = quotas::table
-//         .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(days_to_go)))
-//         .select((quotas::new_assigned, quotas::review_assigned, quotas::new_practiced, quotas::review_practiced))
-//         .get_results::<(i32, i32, i32, i32)>(conn)
-//         .expect("failed to retrieve quota records");
+#[tauri::command] 
+pub fn print_cards(state: State<DatabaseState>, deadline_id: i32) -> Vec<(i32, Option<i32>, Option<i32>, String)> {
+    use crate::schema::cards;
+    let conn= &mut *state.conn.lock().unwrap();
+    
+    let deck_ids = get_deck_ids(conn, deadline_id);
 
-//     let mut summed_quota = Quota { new_left: 0, review_left: 0, num_progressed: 0 };
-//     for quota in quotas {
-//         summed_quota.new_left += quota.0;
-//         summed_quota.review_left += quota.1;
-//         summed_quota.num_progressed += quota.2;
-//     }
+    let mut cards = Vec::new();
+    for deck_id in deck_ids {
+        let info = cards::table
+            .filter(cards::deck_id.eq(deck_id))
+            .select(cards::interval)
+            .select((cards::id, cards::repetitions, cards::interval, cards::front))
+            .get_results::<(i32, Option<i32>, Option<i32>, String)>(conn)
+            .expect("failed to get cards");
+         
+        cards.extend(info);
+    }
 
-//     summed_quota
-
-// }
+    cards
+}
 
 #[tauri::command] 
 pub fn get_next_card(state: State<DatabaseState>, review_state: State<ReviewSessionState>) -> Option<ReviewCard> { 
@@ -317,14 +195,17 @@ pub fn get_next_card(state: State<DatabaseState>, review_state: State<ReviewSess
     let conn= &mut *state.conn.lock().unwrap();
     let deadline_id= &*review_state.deadline_id.lock().unwrap();
     let new_ids = &*review_state.new_ids.lock().unwrap();
-    let days_to_go= &*review_state.days_to_go.lock().unwrap();
     let curr_card = &mut *review_state.curr_card.lock().unwrap();
 
     // get deck ids and quotas
     let deck_ids = get_deck_ids(conn, deadline_id.unwrap());
-    let quotas = get_deadline_quotas(conn, &deck_ids, &days_to_go.unwrap());
 
-    // determine if drawing new card
+    let mut quotas = Vec::new();
+    for deck_id in &deck_ids {
+        quotas.push(get_deck_quota(conn, *deck_id).expect("failed to get deck id"));
+    }
+
+    // determine if drawing new card; None if no more cards in quota and review session done
     let is_new: Option<bool> = is_drawing_new(&quotas);
     if let None = is_new {
         return None;
@@ -336,35 +217,39 @@ pub fn get_next_card(state: State<DatabaseState>, review_state: State<ReviewSess
     let deck_id = deck_ids[deck_idx];
 
     // choose box
-    let new_card;
+    let is_anki = get_is_anki(conn, deadline_id.unwrap());
+    let popped_card;
     if is_new {
-        new_card = pop_new_card(conn, new_ids, deck_id);
-
+        popped_card = pop_new_card(conn, new_ids, deck_id);
     } else {
-        new_card = pop_review_card(conn, deck_id);
+        if !is_anki {
+            popped_card = pop_review_card(conn, deck_id);
+        } else {
+            popped_card = pop_review_anki_card(conn, deck_id);
+        }
     }
 
+    // save current card for getLastCard and undoGetLastCard
     *curr_card = Some(UserResponse {
-        card_id: new_card.card.id.clone(),
+        card_id: popped_card.card.id.clone(),
         box_pos_delta: None,
         user_answer: String::from(""),
-        stack_before: new_card.stack_before.clone(),
+        stack_before: popped_card.stack_before.clone(),
         stack_after: None,
         deck_id
     });
 
-    Some(new_card)
+    Some(popped_card)
 
  }
 
 fn pop_new_card(conn: &mut SqliteConnection, new_ids: &Vec<i32>, deck_id: i32) -> ReviewCard { 
-    use crate::schema::{cards, deckitems, entries};
+    use crate::schema::{cards, entries};
     use diesel::prelude::*;
 
     // get the first card in the chosen deck whose id is in new_ids
     let new_card = cards::table
-        .inner_join(deckitems::table.on(cards::id.eq(deckitems::item_id)))
-        .filter(cards::id.eq_any(new_ids).and(deckitems::deck_id.eq(deck_id)))
+        .filter(cards::id.eq_any(new_ids).and(cards::deck_id.eq(deck_id)))
         .select((cards::id, cards::front, cards::back))
         .order(cards::queue_score.asc())
         // .order(cards::queue_score.asc().nulls_first()) // nulls_first means nulls come first with ascending order
@@ -393,12 +278,12 @@ fn pop_new_card(conn: &mut SqliteConnection, new_ids: &Vec<i32>, deck_id: i32) -
 }
 
 fn pop_review_card(conn: &mut SqliteConnection, deck_id: i32) -> ReviewCard { 
-    use crate::schema::{cards, deckitems, entries};
+    use crate::schema::{cards, entries};
 
 
-    let card_ids = deckitems::table
-        .filter(deckitems::deck_id.eq(deck_id))
-        .select(deckitems::item_id)
+    let card_ids = cards::table
+        .filter(cards::deck_id.eq(deck_id))
+        .select(cards::id)
         .get_results::<i32>(conn)
         .expect("failed to get deck ids");
 
@@ -410,7 +295,7 @@ fn pop_review_card(conn: &mut SqliteConnection, deck_id: i32) -> ReviewCard {
     let box_counts = cards::table
         .select((cards::box_position, diesel::dsl::sql::<diesel::sql_types::BigInt>("count(*)"))) // https://github.com/diesel-rs/diesel/issues/1781#issuecomment-633174958
         .group_by(cards::box_position)
-        .get_results::<(i32, i64)>(conn)
+        .get_results::<(Option<i32>, i64)>(conn)
         .expect("failed to get distribution of boxes");
 
 
@@ -443,7 +328,7 @@ fn pop_review_card(conn: &mut SqliteConnection, deck_id: i32) -> ReviewCard {
 }
 
 // returns box position
-fn choose_weighted_index(pos_weights: &Vec<(i32, i64)>) -> i32 {
+fn choose_weighted_index(pos_weights: &Vec<(Option<i32>, i64)>) -> i32 {
     let mut v = Vec::new();
     for w in pos_weights {
         v.push(w.1 as i32);
@@ -455,7 +340,7 @@ fn choose_weighted_index(pos_weights: &Vec<(i32, i64)>) -> i32 {
     let mut rng = rand::thread_rng();
     let idx = dist.sample(&mut rng);
 
-    let box_pos = pos_weights[idx].0;
+    let box_pos = pos_weights[idx].0.unwrap();
     box_pos
 }
 
@@ -515,42 +400,82 @@ pub fn record_response(
     user_answer: String, 
     card: ReviewCard
 ) -> String {
+    use crate::schema::cards;
 
-    use crate::schema::{cards, quotas, deckitems};
     let conn= &mut *state.conn.lock().unwrap();
-    let days_to_go = *review_state.days_to_go.lock().unwrap();
     let response_stack = &mut *review_state.response_stack.lock().unwrap();
     let curr_card = &mut *review_state.curr_card.lock().unwrap();
+    let deadline_id= &mut *review_state.deadline_id.lock().unwrap();
 
+
+    let is_anki = get_is_anki(conn, deadline_id.unwrap());
+
+    let stack_after; 
+    let box_pos_delta;
+    if !is_anki {
+        let days_to_go = *review_state.days_to_go.lock().unwrap();
+        stack_after = update_card(conn, &card, score, days_to_go.unwrap());
+        box_pos_delta = Some(get_box_pos_delta(conn, score, &card.card.id));
+    } else {
+        stack_after = update_card_anki(conn, &card, score);
+        box_pos_delta = None;
+    }
+
+    let deck_id = cards::table
+        .filter(cards::id.eq(card.card.id))
+        .select(cards::deck_id)
+        .get_result::<i32>(conn)
+        .expect("failed to get deck id");
+
+    // return stack after
+    *curr_card = None;
+    let response = UserResponse {
+        card_id: card.card.id,
+        user_answer,
+        stack_before: card.stack_before.clone(),
+        stack_after: Some(stack_after.clone()),
+        box_pos_delta,
+        deck_id 
+    };
+    response_stack.push(response);
+
+    stack_after
+    
+}
+
+
+// returns stack_after
+fn update_card(conn: &mut SqliteConnection, card: &ReviewCard, score: i32, days_to_go: i32) -> String {
+    use crate::schema::{cards, quotas};
     // update card box_pos
     let box_pos_delta = get_box_pos_delta(conn, score, &card.card.id);
 
     // update card's contents and box pos, returning new box pos
     update(cards::table)
         .filter(cards::id.eq(card.card.id))
-        .set((cards::box_position.eq(cards::box_position + box_pos_delta), cards::front.eq(card.card.front), cards::back.eq(card.card.back), cards::queue_score.eq(get_queue_score())))
+        .set((cards::box_position.eq(cards::box_position + box_pos_delta), cards::front.eq(&card.card.front), cards::back.eq(&card.card.back), cards::queue_score.eq(get_queue_score())))
         .execute(conn)
         .expect("failed to update card box pos");
 
 
     // get deck id
-    let deck_id = deckitems::table
-        .filter(deckitems::item_id.eq(card.card.id))
-        .select(deckitems::deck_id)
+    let deck_id = cards::table
+        .filter(cards::id.eq(card.card.id))
+        .select(cards::deck_id)
         .get_result::<i32>(conn)
         .expect("failed to get deck id");
 
     // update quota
     if card.stack_before == "new" {
         update(quotas::table)
-            .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(days_to_go.unwrap())))
+            .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(days_to_go)))
             .set((quotas::new_assigned.eq(quotas::new_assigned - box_pos_delta), quotas::new_practiced.eq(quotas::new_practiced + box_pos_delta)))
             .execute(conn)
             .expect("failed to update new quota");
 
     } else {
         update(quotas::table)
-            .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(days_to_go.unwrap())))
+            .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(days_to_go)))
             .set((quotas::review_assigned.eq(quotas::review_assigned - box_pos_delta), quotas::review_practiced.eq(quotas::review_practiced + box_pos_delta)))
             .execute(conn)
             .expect("failed to update review quota");
@@ -563,22 +488,7 @@ pub fn record_response(
     } else {
         stack_after = &card.stack_before;
     }
-    let stack_after = String::from(stack_after);
-
-    // return stack after
-    *curr_card = None;
-    let response = UserResponse {
-        card_id: card.card.id,
-        user_answer,
-        stack_before: card.stack_before.clone(),
-        stack_after: Some(stack_after.clone()),
-        box_pos_delta: Some(box_pos_delta),
-        deck_id
-    };
-    response_stack.push(response);
-
-    stack_after
-    
+    String::from(stack_after)
 }
 
 fn get_box_pos_delta(conn: &mut SqliteConnection, score: i32, card_id: &i32) -> i32 {
@@ -587,8 +497,9 @@ fn get_box_pos_delta(conn: &mut SqliteConnection, score: i32, card_id: &i32) -> 
     let box_pos = cards::table
         .filter(cards::id.eq(card_id))
         .select(cards::box_position)
-        .get_result::<i32>(conn)
-        .expect("failed to get box pos");
+        .get_result::<Option<i32>>(conn)
+        .expect("failed to get box pos")
+        .expect("failed to unwrap box pos");
 
     let mut box_pos_delta = 0;
     if score == -1 && box_pos > 1 {
@@ -600,7 +511,7 @@ fn get_box_pos_delta(conn: &mut SqliteConnection, score: i32, card_id: &i32) -> 
 }
 
 // returns queue score (epoch time in seconds plus or minus 15 minutes)
-fn get_queue_score() -> Option<i32> {
+pub fn get_queue_score() -> Option<i32> {
     let dt = Local::now().timestamp();
     let mut range = rand::thread_rng();
     let noise = range.gen_range(-30..30); // +-30 secs

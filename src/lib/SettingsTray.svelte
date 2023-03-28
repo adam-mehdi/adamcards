@@ -38,13 +38,14 @@
 	let createFolderTrayOpen = false;
 	let createDeckTrayOpen = false;
 	let createDeadlineTrayOpen = false;
+	let createAnkiTrayOpen = false;
 	let resetDeadlineTrayOpen = false;
 
 	let renameTrayOpen = false;
 	let moveTrayOpen = false;
 
 	$: actionTrayOpen = createFolderTrayOpen || createDeadlineTrayOpen || 
-		createDeckTrayOpen || renameTrayOpen || moveTrayOpen || resetDeadlineTrayOpen;
+		createDeckTrayOpen || renameTrayOpen || moveTrayOpen || resetDeadlineTrayOpen || createAnkiTrayOpen;
 
 	let deadlineDate: string | null = getNextWeekDate();
 	let deadlineTime: string | null = "14:00";
@@ -84,7 +85,7 @@
 		}		
 
 		// specify what type of entry is being created
-		let newType: "folder" | "deadline" | "deck" = "folder";
+		let newType: "folder" | "deadline" | "deck" | "ankibox";
 
 		let new_deadline_date;
 		let intensity;
@@ -97,7 +98,10 @@
 			newType = "deadline";
 			new_deadline_date = deadlineDate + " " + deadlineTime + ":00";
 			intensity = studyIntensity == "" ? 2 : parseInt(studyIntensity);
-			
+		} else if (createAnkiTrayOpen) {
+			newType = "ankibox";
+			new_deadline_date = null;
+			intensity = null
 		} else {
 			newType = "deck";
 			new_deadline_date = null;
@@ -148,6 +152,7 @@
 		createFolderTrayOpen = false;
 		createDeckTrayOpen = false;
 		createDeadlineTrayOpen = false;
+		createAnkiTrayOpen = false;
 		resetDeadlineTrayOpen = false;
 
 		renameTrayOpen = false;
@@ -224,20 +229,20 @@
 
 
 
-<div class="flex justify-end space-x-4">
+<div class="flex justify-end space-x-3 lg:space-x-5">
 
 
 	<!-- warning mark in case user performs an invalid action -->
 	{#if entered_dup_name}
 		<!-- warning sign ! -->
 		<div class="float-right">
-			<Hint placement="left" text="Duplicate paths not allowed">
+			<Hint placement="top" text="Duplicate paths not allowed">
 				<div class="h-6 w-5 text-blacktext dark:text-columbia font-extrabold">!</div>
 			</Hint>
 		</div>
 	{:else if entered_past_deadline}
 		<div class="float-right">
-			<Hint placement="left" text="Deadline must be set in the future">
+			<Hint placement="top" text="Deadline must be set in the future">
 				<div class="h-6 w-5 text-blacktext dark:text-columbia font-extrabold">!</div>
 			</Hint>
 		</div>
@@ -249,7 +254,9 @@
 	
 	{/if}
 
-	{#if entryData.entry_type == "deadline"}
+	{#if entryData.entry_type == "deadline" || entryData.entry_type == "ankibox"}
+
+
 		<div class="float-right pt-1 px-2 flex flex-row">
 			
 			{#if deadline_complete}
@@ -271,88 +278,112 @@
 				</Hint>
 			{/if}
 			{#if entry_deadline_date}
+				<Hint placement="top" text="Deadline date">
 				<div class=" z-10 mb-8">
 						<div class="w-22 { !deadline_complete ? "text-darktext dark:text-columbia" : "opacity-30" } font-mono">
 							<p class="align-top text-sm leading-4">{entry_deadline_date}</p>
 						</div>
 				</div>
+				</Hint>
 
 			{/if}
-
-
 		</div>
+			<!-- Edit -->
+			{#if !deadline_complete}
+				<a href={`/${entryData.entry_id}/edit`} class="z-10 outline-none">
+					<Hint placement="top" text="Edit">
+						<button class="float-right ring-columbia -mr-1  focus:outline-none focus:ring duration-75 rounded-md">
+							<img class="w-6 h-6 p-1 dark:invert" src=pencil.png alt="editing pencil" />
+						</button>
+					</Hint>
+				</a>
+			{:else}
+				<div class="z-20 outline-none">
+					<Hint placement="top" text="Reset before editing">
+						<button class="float-right cursor-default -mr-1 ring-columbia rounded-md focus:outline-none focus:ring duration-75">
+							<img class="w-6 h-6 p-1 dark:invert opacity-30" src=pencil.png alt="editing pencil" />
+						</button>
+					</Hint>
+				</div>
+			{/if}
+	
+			<!-- Review -->
+			{#if entryData.entry_quota != null && (entryData.entry_quota.new_left > 0 || entryData.entry_quota.review_left > 0)}
+				<a href={`/${entryData.entry_id}/review`} class="z-20 outline-none">
+					<Hint placement="top" text="Review">
+						<button class="float-right z-30 ring-columbia -ml-1 focus:outline-none focus:ring duration-75 rounded-md">
+							<img class="w-6 h-6 p-1 dark:invert" src=flash-cards.png alt="review" />
+						</button>
+					</Hint>
+				</a>
+			{:else}
+				<div class="z-20 outline-none">
+					<Hint placement="top" text="No cards to review">
+						<button
+							class="float-right cursor-default ring-columbia -ml-1 rounded-md focus:outline-none focus:ring duration-75">
+							<img class="w-6 h-6 p-1 dark:invert opacity-40" src=flash-cards.png alt="review" />
+						</button>
+					</Hint>
+				</div>
+			{/if}
 
-		<!-- Edit -->
-		{#if !deadline_complete}
-			<a href={`/${entryData.entry_id}/edit`} class="z-10 outline-none">
-				<Hint placement="left" text="edit and add cards">
-					<button class="float-right ring-columbia  focus:outline-none focus:ring duration-75 rounded-md">
-						<img class="w-6 h-6 p-1 dark:invert" src=pencil.png alt="editing pencil" />
-					</button>
-				</Hint>
-			</a>
-		{:else}
-			<div class="z-20 outline-none">
-				<Hint placement="left" text="reset deadline before editing">
-					<button class="float-right cursor-default ring-columbia rounded-md focus:outline-none focus:ring duration-75">
-						<img class="w-6 h-6 p-1 dark:invert opacity-30" src=pencil.png alt="editing pencil" />
-					</button>
-				</Hint>
-			</div>
-		{/if}
-
-		<!-- Review -->
-		{#if entryData.entry_quota != null && (entryData.entry_quota.new_left > 0 || entryData.entry_quota.review_left > 0)}
-			<a href={`/${entryData.entry_id}/review`} class="z-20 outline-none">
-				<Hint placement="left" text="Review {deadline_complete ? "past deadline" : `cards in ${entryData.entry_name}`}">
-					<button class="float-right z-30 ring-columbia  focus:outline-none focus:ring duration-75 rounded-md">
-						<img class="w-6 h-6 p-1 dark:invert" src=flash-cards.png alt="review" />
-					</button>
-				</Hint>
-			</a>
-		{:else}
-			<div class="z-20 outline-none">
-				<Hint placement="left" text="No cards to review">
-					<button
-						class="float-right cursor-default ring-columbia rounded-md focus:outline-none focus:ring duration-75">
-						<img class="w-6 h-6 p-1 dark:invert opacity-40" src=flash-cards.png alt="review" />
-					</button>
-				</Hint>
-			</div>
-		{/if}
 	{/if}
 
 
 	{#if entryData.entry_quota != null && entryData.entry_type != 'folder'} 
-		<div class="float-right z-20">
-			<Hint placement="left" text="{entryData.entry_quota.num_progressed} {entryData.entry_quota.num_progressed == 1 ? "card" : "cards"} advanced today">
-				<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.num_progressed} </div>
-			</Hint>
+	
+
+		<div class=" space-x-1 ">
+	  
+			<div class="float-right z-40 ">
+				<Hint placement="top" text="{entryData.entry_quota.review_left} review">
+					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.review_left} </div>
+				</Hint>
+			</div>
+
+			<div class="float-right z-30">
+				<Hint placement="top" text="{entryData.entry_quota.new_left} new">
+					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.new_left} </div>
+				</Hint>
+			</div>
+
+			<div class="float-right">
+				<Hint placement="top" text="{entryData.entry_quota.num_progressed} practiced">
+					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.num_progressed} </div>
+				</Hint>
+			</div>
+
+		</div>
+	{:else}
+		<div class=" space-x-1 ">
+			<div class="float-right z-40 "><div class="h-6 w-5 text-blacktext dark:text-columbia font-serif"> </div></div>
+			<div class="float-right z-30"><div class="h-6 w-5 text-blacktext dark:text-columbia font-serif"> </div> </div>
+			<div class="float-right"><div class="h-6 w-5 text-blacktext dark:text-columbia font-serif"> </div></div>
 		</div>
 
-		<div class="float-right z-30">
-			<Hint placement="left" text="{entryData.entry_quota.new_left} new {entryData.entry_quota.new_left == 1 ? "card" : "cards"} to practice today">
-				<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.new_left} </div>
-			</Hint>
-		</div>
-
-		<div class="float-right z-40">
-			<Hint placement="left" text="{entryData.entry_quota.review_left} reviewed {entryData.entry_quota.new_left == 1 ? "card" : "cards"} to practice today">
-				<div class="h-6 w-4 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.review_left} </div>
-			</Hint>
-		</div>
 	{/if}
 		
 
 
 	<!-- Gear to open settings tray -->
 	<div class="z-40">
-		<Hint placement="left" text="Create or modify files">
-			<button
-					class="float-right ring-columbia focus:outline-none focus:ring duration-75 rounded-md -ring-offset-4"
-					on:click|stopPropagation={toggleSettingsTray}
-				>
-					<img class="h-6 w-6 p-1 mb-1 mb-r dark:invert" src=settings-gear-black.png alt="setting gear" />
+		<!-- <Hint placement="top" text="Create">
+			<button class="float-right ring-columbia focus:outline-none focus:ring duration-75 rounded-md -ring-offset-4" on:click|stopPropagation={toggleSettingsTray}>
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+					<path fill-rule="evenodd" d="M12 5.25a.75.75 0 01.75.75v5.25H18a.75.75 0 010 1.5h-5.25V18a.75.75 0 01-1.5 0v-5.25H6a.75.75 0 010-1.5h5.25V6a.75.75 0 01.75-.75z" clip-rule="evenodd" />
+				  </svg>
+
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+					<path fill-rule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clip-rule="evenodd" />
+				</svg>
+			</button>
+		</Hint> -->
+
+		<Hint placement="top" text="Actions">
+			<button class="float-right ring-columbia focus:outline-none focus:ring duration-75 rounded-md -ring-offset-4" on:click|stopPropagation={toggleSettingsTray}>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+						<path fill-rule="evenodd" d="M10.5 6a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zm0 6a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zm0 6a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z" clip-rule="evenodd" />
+					</svg>
 			</button>
 		</Hint>
 	</div>
@@ -362,14 +393,13 @@
 	{#if settingsTrayOpen}
 	<div
 		class="absolute flex justify-between z-50 divide-y divide-gray-100 rounded-lg {!actionTrayOpen ? "w-28" : "w-64"} bg-white dark:bg-slate-700 text-blacktext dark:text-whitetext"
-		use:clickOutside 
-		on:click_outside={handleClickOutside}> <!-- error on `click_outside` is due to svelte; like a necessary deprecation error, ignore it -->
+		use:clickOutside on:click_outside|capture={handleClickOutside}> <!-- error on `click_outside` is due to svelte; like a necessary deprecation error, ignore it -->
 
 		{#if !actionTrayOpen}
 
 		<!-- Dropdown menu -->
 		<ul class="px-1 py-2 text-sm ml-3 border-r-[1px] border-columbia -border-spacing-4 rounded-lg" aria-labelledby="dropdownRightEndButton">
-			{#if entryData.entry_type === "folder"}
+			{#if entryData.entry_type === "folder" }
 				<li>
 					<div role="button" 
 						on:click={() => { createFolderTrayOpen = true; }} on:keypress={() => { createFolderTrayOpen = true; }}
@@ -384,9 +414,16 @@
 						Create Deadline
 					</div>
 				</li>
+				<li>
+					<div role="button"
+						on:click={() => { createAnkiTrayOpen = true; }} on:keypress={() => { createDeadlineTrayOpen = true; }}
+						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg block border-columbia px-4 py-2 dark:hover:text-white">
+						Create Anki Box
+					</div>
+				</li>
 			{/if}
 
-			{#if entryData.entry_type === "deadline" && !deadline_complete}
+			{#if entryData.entry_type === "deadline" && !deadline_complete || entryData.entry_type === "ankibox"}
 				<li>
 					<div role="button" 
 						on:click={() => { createDeckTrayOpen = true; }} on:keypress={() => { createDeckTrayOpen = true; }}

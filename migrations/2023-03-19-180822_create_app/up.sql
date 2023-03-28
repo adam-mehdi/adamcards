@@ -7,72 +7,55 @@ CREATE TABLE entries (
 );                                                                              
                                                                                 
 CREATE TABLE folders (                                                          
-    id INTEGER PRIMARY KEY NOT NULL REFERENCES Entries (id) ON DELETE CASCADE            
+    id INTEGER PRIMARY KEY NOT NULL REFERENCES entries (id) ON DELETE CASCADE            
 );                                                                              
                                                                                 
 CREATE TABLE deadlines (                                                        
     id              INTEGER PRIMARY KEY NOT NULL,                                        
-    date_created    TIMESTAMP NOT NULL,                                         
-    deadline_date   TIMESTAMP NOT NULL,                                         
+    deadline_date   TIMESTAMP,                                         
     study_intensity INTEGER,                                                    
-    num_reset       INTEGER NOT NULL CHECK (num_reset > -1),                    
-    FOREIGN KEY (id) REFERENCES Entries (id) ON DELETE CASCADE                  
+    num_reset       INTEGER CHECK (num_reset > -1),                    
+    is_anki         BOOLEAN NOT NULL,
+    FOREIGN KEY (id) REFERENCES entries (id) ON DELETE CASCADE                  
 );                                                                              
                                                                                 
 CREATE TABLE decks (                                                            
     id              INTEGER PRIMARY KEY NOT NULL,                                        
-    date_created    TIMESTAMP NOT NULL,                                         
-    num_boxes       INTEGER NOT NULL,                                           
-    FOREIGN KEY (id) REFERENCES Entries (id) ON DELETE CASCADE                  
+    num_boxes       INTEGER,                                           
+    new_per_day     INTEGER,
+    FOREIGN KEY (id) REFERENCES entries (id) ON DELETE CASCADE                  
 );                                                                              
                                                                                 
 CREATE TABLE parents (                                                          
     parent_id       INTEGER NOT NULL,                                                    
     child_id        INTEGER NOT NULL,                                                    
     PRIMARY KEY (parent_id, child_id),                                          
-    FOREIGN KEY (parent_id) REFERENCES Entries (id) ON DELETE CASCADE,          
-    FOREIGN KEY (child_id) REFERENCES Entries (id) ON DELETE CASCADE            
-);                                                                              
-
-
-
-
-CREATE TABLE deckitems (                                                        
-    item_id         INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,                          
-    deck_id         INTEGER NOT NULL,                                           
-    FOREIGN KEY (deck_id) REFERENCES Decks (id) ON DELETE CASCADE               
-);                                                                              
-                                                                                
-CREATE TABLE documents (                                                        
-    id              INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,                          
-    source_text     BLOB,                                                       
-    notes           TEXT,                                                       
-    FOREIGN KEY (id) REFERENCES DeckItems (item_id) ON DELETE CASCADE           
+    FOREIGN KEY (parent_id) REFERENCES entries (id) ON DELETE CASCADE,          
+    FOREIGN KEY (child_id) REFERENCES entries (id) ON DELETE CASCADE            
 );                                                                              
                                                                                 
 CREATE TABLE cards(                                                             
     id              INTEGER PRIMARY KEY NOT NULL,                                        
+    deck_id         INTEGER NOT NULL,
     front           TEXT NOT NULL,                                              
     back            TEXT NOT NULL,                                              
     queue_score     INTEGER,                                                    
-    box_position    INTEGER CHECK (box_position > -1) NOT NULL,                 
-    FOREIGN KEY (id) REFERENCES DeckItems (item_id) ON DELETE CASCADE           
-);                                                                              
-                                                                                
-CREATE TABLE media (                                                            
-    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,                                       
-    content BLOB,                                                               
-    entry_id INTEGER,                                                           
-    FOREIGN KEY (entry_id) REFERENCES DeckItems (item_id) ON DELETE SET NULL    
-);                                                                              
-                                                                                
-CREATE TABLE cardhistory (                                                      
-    card_id              INTEGER PRIMARY KEY NOT NULL,                          
-    review_time          TIMESTAMP NOT NULL,                                    
-    user_response        INTEGER CHECK (user_response in (-1, 0, 1)),           
-    duration_to_respond  INTEGER CHECK (duration_to_respond > 0),               
-    box_position_initial INTEGER CHECK (box_position_initial > -1),             
-    FOREIGN KEY (card_id) REFERENCES Cards (id) ON DELETE CASCADE               
+    -- AM-1 field
+    box_position    INTEGER CHECK (box_position > -1),                 
+    -- Anki fields
+    repetitions     INTEGER,
+    easiness        REAL,
+    interval        INTEGER,
+    next_practice   DATE,
+    -- AI fields
+    rephrasing1     TEXT,
+    rephrasing2     TEXT,
+    rephrasing3     TEXT,
+    rephrasing4     TEXT,
+    rephrasing5     TEXT,
+    explanation     TEXT,
+
+    FOREIGN KEY (deck_id) REFERENCES decks (id) ON DELETE CASCADE           
 );                                                                              
                                                                                 
 CREATE TABLE userconfig (                                                       
@@ -81,8 +64,6 @@ CREATE TABLE userconfig (
     is_text_field  BOOLEAN NOT NULL                                             
 );                                                                              
                                                                                                     
-                                                                                                    
-
 CREATE TABLE quotas (                                                           
     id                 INTEGER NOT NULL,                                                 
     days_to_go         INTEGER NOT NULL,                                                 
@@ -95,4 +76,12 @@ CREATE TABLE quotas (
     PRIMARY KEY (id, days_to_go),                                               
     FOREIGN KEY (id) REFERENCES Decks (id) ON DELETE CASCADE                    
 );                                                                              
-      
+
+CREATE TABLE ankiquotas (
+    deck_id           INTEGER NOT NULL,
+    date_practiced    DATE NOT NULL,
+    new_practiced     INTEGER NOT NULL,
+    review_practiced  INTEGER NOT NULL,
+    PRIMARY KEY (deck_id, date_practiced)
+    FOREIGN KEY (deck_id) REFERENCES decks(id)
+);

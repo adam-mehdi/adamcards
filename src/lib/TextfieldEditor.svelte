@@ -5,6 +5,8 @@
     import { mergeAttributes } from '@tiptap/core'
     import Paragraph from '@tiptap/extension-paragraph';
     import Typography from '@tiptap/extension-typography'
+    import Image from '@tiptap/extension-image'
+
     
   
     let element: HTMLElement
@@ -53,8 +55,14 @@
                   renderHTML({ HTMLAttributes }) {
                     return ['div', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), 0]
                   },
-                })
+                }),
+                Image.configure({
+                  inline: true,
+                  HTMLAttributes: {
+                    class: 'rounded-lg object-contain max-h-64 w-full',
+                  },
 
+                })
             ],
             editorProps: {
                 attributes: {
@@ -76,6 +84,9 @@
         content = editor.getHTML()
       })
 
+      insertImages(content, editor);
+
+
     })
   
     onDestroy(() => {
@@ -83,32 +94,65 @@
         editor.destroy()
       }
     })
-
     
-
-    // function updateContent() {
-    //     content = editor.getHTML()
-    // }
 
     function focusEditor() {
         editor.commands.focus()
     }
 
+    function handlePaste(event: any) {
+      const items = event.clipboardData.items
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i]
+        if (item.type.indexOf('image') === 0) {
+          const file = item.getAsFile()
+          if (file) {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const url = reader.result!.toString()
+              // let image_id = invoke("create_image")
+              // insert `[[[IMAGE ${image_id}]]]`
+              editor.chain().focus().setImage({ src: url }).run()
+            }
+            reader.readAsDataURL(file)
+          }
+          event.preventDefault()
+        }
+    }
+  }
+
+
+   // This function parses and inserts <img> tags with data src as TipTap Image components
+   const insertImages = (htmlContent: string, editor: any) => {
+    const div = document.createElement('div');
+    div.innerHTML = htmlContent;
+    const images = div.querySelectorAll('img');
+
+    images.forEach((img) => {
+      const src = img.getAttribute('src');
+      if (src!.startsWith('data:')) {
+        editor.chain().focus().setImage({ src }).run();
+      }
+    });
+  };
+
+
+
   </script>
   
 <div class="rounded-lg p-2 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
-    <!-- on:input={updateContent}  -->
   <div 
     bind:this={element} 
     class="ProseMirror" 
     style="{!is_answerbar ? `max-height: ${max_height};` : "padding-right: 23px;"}; min-height: {min_height}; overflow: {overflow}"
+    on:paste={handlePaste} 
     />
 </div>
 
   <!-- {#if editor}
     {editor.getHTML()}
   {/if} -->
-  
+
   <style>
 
 

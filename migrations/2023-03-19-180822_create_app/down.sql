@@ -14,3 +14,4 @@ DROP TABLE IF EXISTS cardhistory;
 DROP TABLE IF EXISTS userconfig;                                        
 
 DROP TABLE IF EXISTS quotas;                                        
+DROP TABLE IF EXISTS ankiquotas;                                        

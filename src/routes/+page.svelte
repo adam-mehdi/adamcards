@@ -23,6 +23,7 @@
 	async function load_folder_system() {
 		// load folder system
 		const fs: FolderSystem = await invoke('read_folder_system');
+		console.log(fs);
 		folderSystemStore.update(() => fs);
 
 		// load config
@@ -80,7 +81,7 @@
 			
 			<div class="flex justify-between mb-10 mx-10">
 
-				<h3 class="text-center text-columbia-dark dark:text-columbia font-bold text-2xl mt-5 font-serif">Trunk</h3>
+				<h3 class="text-center text-columbia-dark dark:text-columbia font-bold text-2xl mt-5 font-serif"> </h3>
 
 				<!-- dark mode button -->
 				<div class="fled justify-evenly mt-5 lg:mr-5">
@@ -104,13 +105,13 @@
 		
 		<!-- folder system -->
 		{#if root_folders.length > 0}
-			<div class="max-w-xl mx-auto pl-4 -pt-2 border-columbia-dark dark:border-columbia border-l rounded-bl-md">
+			<div class="select-none max-w-xl lg:max-w-2xl mx-auto pl-4 pr-4 -pt-2 border-columbia-dark dark:border-columbia border-l rounded-bl-md">
 				{#each root_folders as folder_id (folder_id)}
 					<Directory id={folder_id} />
 				{/each}
 			</div>
 		{:else}
-			<div class="font-mono text-columbia text-xl ml-24">Loading your files</div>
+			<div class="font-mono text-columbia text-xl ml-24">...</div>
 		{/if}
 		
 		</div>

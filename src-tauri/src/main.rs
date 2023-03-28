@@ -11,10 +11,12 @@ use std::sync::{
 };
 
 mod models;
+mod anki;
 mod schema;
 mod home_db;
 use crate::home_db::{ 
   init_root_folder,
+  init_getting_started,
   delete_entry,
   create_entry, 
   rename_entry,
@@ -27,6 +29,7 @@ use crate::home_db::{
   get_deadline_date,
   entered_past_deadline,
   reset_deadline,
+  toggle_is_expanded
 };
 
 mod edit_db;
@@ -35,10 +38,11 @@ use edit_db::{
   write_text_field,
   create_cards,
   update_card,
-  delete_card
+  delete_card,
 };
 
 mod utils_db;
+use utils_db::get_is_anki_frontend;
 
 mod review_db;
 use review_db::{
@@ -47,6 +51,7 @@ use review_db::{
   get_next_card,
   record_response,
   get_last_card,
+  print_cards
 };
 
 
@@ -79,7 +84,7 @@ pub fn establish_connection() -> SqliteConnection {
 
   // let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
   // let database_url = "./trunk.db";
-  let database_url = "src-tauri/trunk.db";
+  let database_url = "adam.db";
   SqliteConnection::establish(&database_url)
       .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
 }
@@ -99,7 +104,10 @@ fn main() {
   let mut conn = establish_connection();
   run_migrations(&mut conn).expect("Error embedding migrations");
 
-  init_root_folder(&mut conn);
+  
+  if init_root_folder(&mut conn) {
+    init_getting_started(&mut conn);
+  }
 
   let database_state = DatabaseState {
     conn: Arc::new(Mutex::new(conn))
@@ -124,6 +132,7 @@ fn main() {
       app.manage(database_state);
       app.manage(review_session_state);
 
+
       Ok(())
     })
     // define what backend functions are callable from the frontend
@@ -140,6 +149,9 @@ fn main() {
       get_deadline_date,
       entered_past_deadline,
       reset_deadline,
+      toggle_is_expanded,
+
+      print_cards,
 
       // edit_db
       read_deadline_contents,
@@ -153,6 +165,9 @@ fn main() {
       get_next_card,
       record_response,
       get_last_card,
+
+      // utils_db
+      get_is_anki_frontend
 
       ])
     // run application (boilerplate)

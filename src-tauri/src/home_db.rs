@@ -3,7 +3,7 @@
 // #![allow(dead_code)]
 
 use std::sync::{ Mutex, Arc };
-use chrono::{prelude::*, Local, DateTime};
+use chrono::{prelude::*, Local, DateTime, Duration}; ///, Utc};
 
 use tauri;
 use serde::{
@@ -16,8 +16,9 @@ use diesel::prelude::*;
 use diesel::result::Error;
 
 use crate::utils_db::get_num_boxes;
-use crate::edit_db::{get_days_to_go, write_quotas};
-use crate::review_db::handle_missed_days;
+use crate::utils_db::handle_missed_days;
+use crate::edit_db::{get_days_to_go, write_quotas, insert_deck_contents, DeckNewContents};
+use crate::models::NewCard;
 
 
 pub struct DatabaseState {
@@ -29,7 +30,7 @@ pub struct DatabaseState {
 pub struct EntryMetadata {
     pub entry_type: String,
     pub deadline_date: Option<String>,
-    pub study_intensity: Option<i32>
+    pub study_intensity: Option<i32>,
 }
 
 
@@ -118,6 +119,7 @@ pub fn write_dark_mode(state: tauri::State<DatabaseState>, is_dark_mode: bool) {
         .expect("failed to set dark mode");
 }
 
+
 #[tauri::command] 
 pub fn read_folder_system(state: tauri::State<DatabaseState>) -> Option<FolderSystem> {
     use crate::schema::{entries, parents};
@@ -179,7 +181,7 @@ pub fn read_folder_system(state: tauri::State<DatabaseState>) -> Option<FolderSy
 
 
 fn compute_quotas_(conn: &mut SqliteConnection, mut folder_system: FolderSystem) -> FolderSystem {
-    use crate::schema::{quotas, parents};
+    use crate::schema::parents;
 
     // first write the quotas of all of the decks
     let mut deck_ids = Vec::new();
@@ -188,33 +190,10 @@ fn compute_quotas_(conn: &mut SqliteConnection, mut folder_system: FolderSystem)
             .expect("failed to retrieve entry type");
         if entry_type == String::from("deck") {
 
-            // get days to go of this deck
-            let deadline_id = parents::table
-                .filter(parents::child_id.eq(entry.entry_id))
-                .select(parents::parent_id)
-                .get_result::<i32>(conn)
-                .expect("failed to get deadline parent");
+            entry.entry_quota = get_deck_quota(conn, entry.entry_id);
 
-            let days_to_go = get_days_to_go(conn, deadline_id);
-            handle_missed_days(conn, entry.entry_id, &days_to_go);
+            deck_ids.push(entry.entry_id);
 
-            let entry_quota = quotas::table
-                .filter(quotas::id.eq(entry.entry_id).and(quotas::days_to_go.eq(days_to_go)))
-                .select((quotas::new_assigned, quotas::review_assigned, quotas::new_practiced, quotas::review_practiced))
-                .get_result::<(i32, i32, i32, i32)>(conn)
-                .optional()
-                .expect("failed to grab today's quota");
-
-            if let Some((new_assigned, review_assigned, new_prac, review_prac)) = entry_quota {
-                entry.entry_quota = Some(Quota { 
-                    new_left: new_assigned, 
-                    review_left: review_assigned,
-                    num_progressed: new_prac + review_prac
-                 });
-
-                 deck_ids.push(entry.entry_id);
-            }
-            
         }
     }
 
@@ -261,6 +240,107 @@ fn compute_quotas_(conn: &mut SqliteConnection, mut folder_system: FolderSystem)
 }
 
 
+
+pub fn get_deck_quota(conn: &mut SqliteConnection, deck_id: i32) -> Option<Quota> {
+    use crate::schema::{parents, deadlines, quotas, cards, decks, ankiquotas};
+
+    // get days to go of this deck
+    let deadline_id = parents::table
+        .filter(parents::child_id.eq(deck_id))
+        .select(parents::parent_id)
+        .get_result::<i32>(conn)
+        .expect("failed to get deadline parent");
+
+    let is_anki = deadlines::table
+        .find(deadline_id)
+        .select(deadlines::is_anki)
+        .first::<bool>(conn)
+        .expect("failed to get is_anki");
+
+    if is_anki {
+        // forgetting to find whether next_practice is before today
+        let today = chrono::Local::now().date_naive();
+        let card_reps = cards::table
+            .filter(cards::deck_id.eq(deck_id).and(cards::next_practice.le(today).or(cards::next_practice.is_null())))
+            .select(cards::repetitions)
+            .get_results::<Option<i32>>(conn)
+            .expect("failed to get card repetitions");
+
+        let new_per_day = decks::table
+            .find(deck_id)
+            .select(decks::new_per_day)
+            .get_result::<Option<i32>>(conn)
+            .expect("failed to get new_per_day")
+            .expect("failed to unwrap new_per_day");
+
+        let (mut num_new, mut num_review) = (0, 0);
+        for rep in card_reps {
+            if rep.unwrap() > 0 {
+                num_review = num_review + 1;
+            } else {
+                num_new = num_new + 1;
+            }
+        }
+
+        let today = chrono::Local::now().date_naive();
+        let results: Option<(i32, i32)> = ankiquotas::table
+            .filter(ankiquotas::date_practiced.eq(today).and(ankiquotas::deck_id.eq(deck_id)))
+            .select((ankiquotas::new_practiced, ankiquotas::review_practiced))
+            .get_result::<(i32, i32)>(conn)
+            .optional()
+            .unwrap();
+
+        let mut num_progressed = 0;
+        if let Some((new_prac, rev_prac)) = results {
+            // num_new -= new_prac;
+            // num_review -= rev_prac;
+            num_progressed = new_prac + rev_prac;
+            num_new = std::cmp::max(
+                std::cmp::min(new_per_day - new_prac, num_new), 
+                0
+            );
+        } else {
+            insert_into(ankiquotas::table)
+                .values((
+                        ankiquotas::deck_id.eq(deck_id), 
+                        ankiquotas::date_practiced.eq(today), 
+                        ankiquotas::new_practiced.eq(0), 
+                        ankiquotas::review_practiced.eq(0)
+                ))
+                .execute(conn)
+                .expect("failed to insert new ankiquotas entry for today");
+        }
+
+        
+
+        return Some(Quota {
+            new_left: num_new,
+            review_left: num_review,
+            num_progressed
+        })
+    }
+
+    let days_to_go = get_days_to_go(conn, deadline_id);
+    handle_missed_days(conn, deck_id, &days_to_go);
+
+    let entry_quota = quotas::table
+        .filter(quotas::id.eq(deck_id).and(quotas::days_to_go.eq(days_to_go)))
+        .select((quotas::new_assigned, quotas::review_assigned, quotas::new_practiced, quotas::review_practiced))
+        .get_result::<(i32, i32, i32, i32)>(conn)
+        .optional()
+        .expect("failed to grab today's quota");
+
+    if let Some((new_assigned, review_assigned, new_prac, review_prac)) = entry_quota {
+        return Some(Quota { 
+            new_left: new_assigned, 
+            review_left: review_assigned,
+            num_progressed: new_prac + review_prac
+        });
+    }
+    None
+
+}
+
 /**
  * Given an id of an Entry, returns whether this id corresponds to a 
  * folder, deadline, or deck.
@@ -282,11 +362,20 @@ fn get_entry_type(conn: &mut SqliteConnection, entry_id: i32) -> Result<String, 
     }
 
     let deadline_id = deadlines::table
-        .select(deadlines::id)
         .filter(deadlines::id.eq(entry_id))
+        .select(deadlines::id)
         .first::<i32>(conn);
-    if let Ok(_) = deadline_id {
-        return Ok("deadline".to_string());
+    if let Ok(id) = deadline_id {
+        let is_anki = deadlines::table
+        .filter(deadlines::id.eq(id))
+        .select(deadlines::is_anki)
+        .get_result::<bool>(conn)
+        .expect("failed to get is_anki");
+        if is_anki {
+            return Ok("ankibox".to_string())
+        } else {
+            return Ok("deadline".to_string());
+        }
     }
 
     let deck_id = decks::table
@@ -314,64 +403,43 @@ fn get_entry_type(conn: &mut SqliteConnection, entry_id: i32) -> Result<String, 
  */
 #[tauri::command] 
 pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent_id: Option<i32>, md: EntryMetadata) {
-    use crate::schema::{entries, folders, parents, decks, deadlines};
+    use crate::schema::folders;
 
     let conn= &mut *state.conn.lock().unwrap();
-    let is_expanded = if md.entry_type == "deck" { None } else { Some(true) };
+    
+    let entry_id =  insert_entry(conn, parent_id, entry_name, &md.entry_type);
+
+    let entry_type = md.entry_type.as_str();
+
+    // insert into specialized relation `Folder`/`Deadline`/`Deck` using id
+    match entry_type {
+        "folder" => { insert_into(folders::table).values(folders::id.eq(entry_id)).execute(conn).unwrap(); },
+        "deadline" | "ankibox" => insert_deadline(conn, entry_id, md.deadline_date, md.study_intensity, entry_type == "ankibox"),
+        "deck" => insert_deck(conn, entry_id, parent_id.expect("no parent to deck")),
+        _ => eprintln!("failed to create entry")
+
+    }
 
 
+}
 
-    // insert into generalized relation `Entry`
+// returns entry_id
+fn insert_entry(conn: &mut SqliteConnection, parent_id: Option<i32>, entry_name: &str, entry_type: &str) -> i32 {
+    use crate::schema::{entries, parents};
+
+    let is_expanded = if entry_type == "deck" { None } else { Some(true) };
+
     insert_into(entries::table)
         .values((entries::name.eq(entry_name), entries::is_expanded.eq(is_expanded)))
         .execute(conn)
         .unwrap();
+
     let entry_id = entries::table
         .filter(entries::name.eq(entry_name))
         .order(entries::id.desc())
         .select(entries::id)
         .first::<i32>(conn)
         .unwrap();
-
-    let entry_type = md.entry_type.as_str();
-
-    // insert into specialized relation `Folder`/`Deadline`/`Deck` using id
-    match entry_type {
-        "folder" => {
-                insert_into(folders::table)
-                    .values(folders::id.eq(entry_id))
-                    .execute(conn)
-                    .unwrap();
-        },
-        "deadline" => {
-            let deadline = string_to_chrono(&md.deadline_date.unwrap());
-            
-            insert_into(deadlines::table)
-                .values((
-                    deadlines::id.eq(entry_id), 
-                    deadlines::deadline_date.eq(deadline.naive_local()),
-                    deadlines::date_created.eq(get_current_time()),
-                    deadlines::study_intensity.eq(md.study_intensity.unwrap()),
-                    deadlines::num_reset.eq(0)
-                ))
-                .execute(conn)
-                .unwrap();
-        },
-        "deck" => {
-            let dl_id = parent_id.expect("no parent of deck");
-            let num_boxes = compute_num_boxes_from_id(conn, dl_id);
-            insert_into(decks::table)
-                .values((
-                    decks::id.eq(entry_id),
-                    decks::date_created.eq(get_current_time()),
-                    decks::num_boxes.eq(num_boxes)
-                ))
-                .execute(conn)
-                .unwrap();
-        },
-        _ => eprintln!("failed to create entry")
-
-    }
 
     if let Some(pid) = parent_id {
         insert_into(parents::table)
@@ -380,12 +448,62 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
             .unwrap();
     }
 
+    entry_id
 }
 
-fn get_current_time() -> NaiveDateTime {
-    let current_time = Local::now().naive_local();
-    current_time
+
+fn insert_deadline(conn: &mut SqliteConnection, entry_id: i32, deadline_date: Option<String>, study_intensity: Option<i32>, is_anki: bool) {
+    use crate::schema::deadlines;
+
+    let (deadline_date, study_intensity, num_reset) = if !is_anki {
+        (Some(string_to_chrono(&deadline_date.unwrap()).naive_local()), Some(study_intensity.unwrap()), Some(0))
+    } else {
+        (None, None, None)
+    };
+    
+    insert_into(deadlines::table)
+        .values((
+            deadlines::id.eq(entry_id), 
+            deadlines::deadline_date.eq(deadline_date),
+            deadlines::study_intensity.eq(study_intensity),
+            deadlines::num_reset.eq(num_reset),
+            deadlines::is_anki.eq(is_anki)
+        ))
+        .execute(conn)
+        .unwrap();
+
 }
+
+fn insert_deck(conn: &mut SqliteConnection, deck_id: i32, deadline_id: i32) {
+    use crate::schema::{decks, deadlines};
+
+    let is_anki = deadlines::table
+        .filter(deadlines::id.eq(deadline_id))
+        .select(deadlines::is_anki)
+        .get_result::<bool>(conn)
+        .expect("failed to get parent deadline");
+
+    let (num_boxes, new_per_day) = if !is_anki { 
+        (Some(compute_num_boxes_from_id(conn, deadline_id)), None)
+    } else {
+        (None, Some(5)) // new_per_day is 5 by default 
+    };
+
+    insert_into(decks::table)
+        .values((
+            decks::id.eq(deck_id),
+            decks::num_boxes.eq(num_boxes),
+            decks::new_per_day.eq(new_per_day)
+        ))
+        .execute(conn)
+        .unwrap();
+}
+
+
+// fn get_current_time() -> NaiveDateTime {
+//     let current_time = Local::now().naive_local();
+//     current_time
+// }
 
 /** 
  * Deletes from the database a file system entry, its children, and all their contents
@@ -398,6 +516,7 @@ fn get_current_time() -> NaiveDateTime {
 #[tauri::command] 
 pub fn delete_entry(state: tauri::State<DatabaseState>, entry_id: i32) {
     use crate::schema::{entries, parents};
+    // TODO: decrement quota
 
     let conn= &mut *state.conn.lock().unwrap();
 
@@ -426,6 +545,8 @@ pub fn delete_entry(state: tauri::State<DatabaseState>, entry_id: i32) {
     delete(entries::table.filter(entries::id.eq(entry_id)))
         .execute(conn)
         .expect("failed to delete entry");
+
+    
 
 }
 
@@ -512,11 +633,11 @@ pub fn is_duplicate_name(state: tauri::State<DatabaseState>, parent_id: Option<i
 
 
 /**
- * Initializes root folder for first startup of app
+ * Initializes root folder for first startup of app. Returns whether root folder was init
  */
-pub fn init_root_folder(conn: &mut SqliteConnection) {
+pub fn init_root_folder(conn: &mut SqliteConnection) -> bool {
     if !folder_system_is_empty(conn) {
-        return;
+        return false;
     }
     use crate::schema::{entries, folders, userconfig};
 
@@ -533,9 +654,7 @@ pub fn init_root_folder(conn: &mut SqliteConnection) {
         .order(entries::id.desc())
         .select(entries::id)
         .first::<i32>(conn)
-        .unwrap();
-
-    
+        .unwrap();    
 
     // insert into specialized relation `Folder`/`Deadline`/`Deck` using id
     insert_into(folders::table)
@@ -548,7 +667,79 @@ pub fn init_root_folder(conn: &mut SqliteConnection) {
         .values((userconfig::is_dark_mode.eq(true), userconfig::is_text_field.eq(false)))
         .execute(conn)
         .expect("failed to initialize user config");
+
+    true
 }
+
+
+pub fn init_getting_started(conn: &mut SqliteConnection) {
+    use crate::schema::entries;
+
+    let parent_id = entries::table
+        .select(entries::id)
+        .get_result::<i32>(conn)
+        .expect("failed to get parent id");
+
+    // in two days 
+    let now: DateTime<Local> = Local::now();
+    let next_week = now + Duration::days(1) + Duration::minutes(150);
+    let formatted_date = next_week.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    // insert starter deadline
+    let deadline_id = insert_entry(conn, Some(parent_id), "How to use Adam", "deadline");
+    insert_deadline(conn, deadline_id, Some(formatted_date), Some(1), false);
+
+    // insert deck 1: create (folder -> deadline -> deck), edit (create cards), review (until deadline)
+    insert_starting_deck(conn, deadline_id, "1. Fundamentals");
+    
+    // insert deck 2: actions, textfield, prompt bar, reset deadline
+    insert_starting_deck(conn, deadline_id, "2. Advanced Features");
+
+    // insert deck 3: synthesis, rephrasing, explanations, instruction, upgrade, future
+    insert_starting_deck(conn, deadline_id, "3. AI Magic");
+
+}
+
+fn insert_starting_deck(conn: &mut SqliteConnection, deadline_id: i32, deck_name: &str)  {
+    let deck_id = insert_entry(conn, Some(deadline_id), deck_name, "deck");
+    insert_deck(conn, deck_id, deadline_id);
+
+    let deck_contents: DeckNewContents = get_starting_deck_contents(deck_id, deck_name.to_string());
+    
+    let ids = insert_deck_contents(conn, deck_contents, false);
+    write_quotas(conn, deadline_id, deck_id, ids.len() as i32);
+}
+
+fn get_starting_deck_contents(deck_id: i32, deck_name: String) -> DeckNewContents {
+    let cards: Vec<NewCard>;
+    if deck_name.starts_with("1") {
+        cards = vec![ 
+            NewCard { front: String::from("Adam's folder system hierarchy consists of three organizational levels: Folders (for organization), Deadlines (housing various Decks), and Decks (containing decks). How many entries in the folder hierarchy are needed to create a card?"), back: String::from("3 (one folder, one deadline, one deck)") },
+            NewCard { front: String::from("Using the action tray on the home screen, you can create, rename, move, or delete entries in the folder system. What icon opens the action tray?"), back: String::from("the vertical ellipsis ⋮") },
+            NewCard { front: String::from("Once you set a deadline and create a deck, you can make cards. How does Adam make sure you learn those cards by your deadline?"), back: String::from("Adam assigns card reviews each day up to your deadline using the AM-1 algorithm. This allows you to learn and remember your cards guaranteed, with the minimum time and effort possible") },
+        ]
+    } else if deck_name.starts_with("2") {
+        cards = vec![
+            NewCard { front: String::from("What happens if you miss a day of reviews?"), back: String::from("Adam automatically adjusts card to spa") },
+            NewCard { front: String::from("In addition to the standard Front/Back editor to create cards, Adam provides Textfield editor that create a card from each line with a double carrot like so: FRONT >> BACK. Why is this helpful?"), back: String::from("Allows you to create cards straight from your notes, saving time") },
+            NewCard { front: String::from("Why does Adam prompt you to type out your answer to a card before revealing the back?"), back: String::from("The most effective way to study flashcards is to write your guess in your own words before revealing the card. It encourages active learning") },
+            NewCard { front: String::from("Suppose you set a deadline for your midterm, and it has passed. How do you ensure you remember your cards for your final?"), back: String::from("reset the deadline on the home screen (a ⟳ button will appear on past deadlines to reset them)") },
+        ]
+    } else { 
+        cards = vec![
+            NewCard { front: String::from("Adam is a free and open-source application. However, it provides powerful AI features, which you can access by getting an OpenAI API key. How much will the AI features cost you?"), back: String::from("Exactly as much as OpenAI costs (.3 cents per thousand words). Adam takes absolutely none of it") },
+            NewCard { front: String::from("What four AI features does Adam offer to accelerate your learning?"), back: String::from("synthesizer (source → cards), rephraser (front + back → newFront + newBack), explainer (front + back → explanation), instruction (front + back + your answer → instruction)") },
+            NewCard { front: String::from("Adam allows you to use the power of GPT to create cards. How do you use this feature?"), back: String::from("enter your notes or source text in the edit page; you can see created cards") },
+            NewCard { front: String::from("With Adam, you can be certain to learn the concept rather than memorize the card. What AI feature enables this?"), back: String::from("Adam rephrases the card question every time using GPT") },
+            NewCard { front: String::from("You don't have to worry about when and where to apply Adam's AI features. It's done for you behind the scenes. What are the only things you have to worry about?"), back: String::from("Coming with material to learn and returning to review your cards") },
+
+        ];
+    }
+
+    DeckNewContents { deck_id, deck_name, cards }
+}
+
+
 
 
 /**
@@ -580,25 +771,27 @@ pub fn entered_past_deadline(deadline: String) -> bool {
 
 // returns deadline date in MMM dd mm:ss format and whether it is complete
 #[tauri::command] 
-pub fn get_deadline_date(state: tauri::State<DatabaseState>, deadline_id: i32) -> (String, bool) {
+pub fn get_deadline_date(state: tauri::State<DatabaseState>, deadline_id: i32) -> Option<(String, bool)> {
     use crate::schema::deadlines;
     let conn= &mut *state.conn.lock().unwrap();
 
-    let deadline_date = deadlines::table
+    let (deadline_date, is_anki)  = deadlines::table
         .filter(deadlines::id.eq(deadline_id))
-        .select(deadlines::deadline_date)
-        .get_result::<NaiveDateTime>(conn)
+        .select((deadlines::deadline_date, deadlines::is_anki))
+        .get_result::<(Option<NaiveDateTime>, bool)>(conn)
         .expect("failed to load deadline date");
 
     // deadline date represents UTC timezone; convert it to local
-    
+    if is_anki { 
+        return None; 
+    }
 
-    let deadline_date = Local.from_local_datetime(&deadline_date).unwrap().naive_local();
+    let deadline_date = Local.from_local_datetime(&deadline_date.unwrap()).unwrap().naive_local();
     let formatted_date = deadline_date.format("%b %d %H:%M").to_string();
 
     let is_complete = naive_to_localoffset(deadline_date).timestamp() < Local::now().timestamp();
 
-    (formatted_date, is_complete)
+    Some((formatted_date, is_complete))
 
 }
 
@@ -607,13 +800,13 @@ pub fn compute_num_boxes_from_id(conn: &mut SqliteConnection, parent_id: i32) ->
 
     let deadline_info = deadlines::table
         .filter(deadlines::id.eq(parent_id))
-        .select((deadlines::deadline_date, deadlines::study_intensity, deadlines::num_reset))
-        .get_result::<(NaiveDateTime, Option<i32>, i32)>(conn)
+        .select((deadlines::study_intensity, deadlines::num_reset))
+        .get_result::<(Option<i32>, Option<i32>)>(conn)
         .expect("failed to get parent deadline info");
 
 
-    let study_intensity = deadline_info.1.expect("did not record study intensity");
-    let num_reset = deadline_info.2;
+    let study_intensity = deadline_info.0.expect("did not record study intensity");
+    let num_reset = deadline_info.1.unwrap();
 
     let days_to_go = get_days_to_go(conn, parent_id);
     get_num_boxes(days_to_go as i32, study_intensity, num_reset)
@@ -633,7 +826,7 @@ pub fn reset_deadline(
     study_intensity: i32,
     new_deadline_date: String
 ) {
-    use crate::schema::{quotas, parents, deadlines, deckitems, cards};
+    use crate::schema::{quotas, parents, deadlines, cards};
 
     let conn= &mut *state.conn.lock().unwrap();
 
@@ -660,17 +853,11 @@ pub fn reset_deadline(
             .execute(conn)
             .expect("failed to delete existing quotas");
 
-        let item_ids = deckitems::table
-            .filter(deckitems::deck_id.eq(deck_id))
-            .select(deckitems::item_id)
-            .get_results::<i32>(conn)
-            .expect("failed to get number of items");
-
         let num_cards = cards::table
-            .filter(cards::id.eq_any(item_ids))
+            .filter(cards::deck_id.eq(deck_id))
             .select(cards::id)
             .get_results::<i32>(conn)
-            .expect("failed to get number of cards (discounting documents from items)")
+            .expect("failed to get number of items")
             .len() as i32;
 
         write_quotas(conn, deadline_id, deck_id, num_cards);
@@ -679,3 +866,17 @@ pub fn reset_deadline(
 
 }
 
+
+#[tauri::command]
+pub fn toggle_is_expanded(state: tauri::State<DatabaseState>, entry_id: i32, is_expanded: bool) {
+    use crate::schema::entries;
+
+    let conn= &mut *state.conn.lock().unwrap();
+
+    update(entries::table)
+        .filter(entries::id.eq(entry_id))
+        .set(entries::is_expanded.eq(is_expanded))
+        .execute(conn)
+        .expect("failed to update expanded");
+    
+}

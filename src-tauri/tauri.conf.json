@@ -7,7 +7,7 @@
 		"distDir": "../build"
 	},
 	"package": {
-		"productName": "Trunk",
+		"productName": "Adam",
 		"version": "0.1.0"
 	},
 	"tauri": {
@@ -33,7 +33,7 @@
 				"icons/icon.icns",
 				"icons/icon.ico"
 			],
-			"identifier": "trunk.dev",
+			"identifier": "adam.dev",
 			"longDescription": "",
 			"macOS": {
 				"entitlements": null,
@@ -62,7 +62,7 @@
 				"fullscreen": false,
 				"height": 600,
 				"resizable": true,
-				"title": "Trunk",
+				"title": "Adam",
 				"width": 800
 			}
 		]
