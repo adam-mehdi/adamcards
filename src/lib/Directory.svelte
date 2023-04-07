@@ -107,7 +107,7 @@
 		{#if entry_data.is_expanded && child_entries.length > 0}
 			<ul transition:slide={{duration:slideDuration}} class="">		
 				{#each child_entries as entry}
-					<li class="max-w-xl lg:max-w-2xl {entry_data.entry_type == "deadline" ? "-mt-1" : ""}">
+					<li class="max-w-2xl lg:max-w-2xl {entry_data.entry_type == "deadline" ? "-mt-1" : ""}">
 						{#if entry.entry_type == 'deck'}
 							<Deck id={entry.entry_id} />
 						{:else if entry_data.entry_type == "folder" && entry.entry_type == "folder" || entry.entry_type == "deadline" || entry.entry_type == "ankibox"}

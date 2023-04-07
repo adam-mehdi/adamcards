@@ -23,7 +23,6 @@
 	async function load_folder_system() {
 		// load folder system
 		const fs: FolderSystem = await invoke('read_folder_system');
-		console.log(fs);
 		folderSystemStore.update(() => fs);
 
 		// load config
@@ -69,19 +68,70 @@
 		mode = $configStore.is_dark_mode ? "dark" : "light"
 	}
 
+
+	let open = false;
+	
+	function enableScroll() {
+		document.body.style.overflow = "auto";
+	}
+	
+	function disableScroll() {
+		document.body.style.overflow = "hidden";
+	}
+
+	$: if (open) {
+		disableScroll();
+	} else {
+		enableScroll();
+	}
+	
+	onMount(() => {
+		if (open)
+			disableScroll();
+	});
+	
+	onDestroy(() => {
+		enableScroll();
+	});
+
+
+
+	// CHATGPT
+	onMount(async () => {
+		console.log('Hello world!');
+
+		const what = await handleChatCompletion();
+
+		console.log('what: ', what);
+	});
+
+	const handleChatCompletion = async () => {
+		const response = await fetch('/api/chat', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				message: 'Hello world!'
+			})
+		}).then((res) => res.json());
+
+		return response;
+	};
+
 </script>
 
 
 <!-- reload file system when action has occured -->
+
 {#key reloadFolders}
 	<div class={mode}>
 		<!-- bar at top -->
-		<div class="min-h-full h-screen bg-white dark:bg-offblack text-black dark:text-offwhite focus:outline-columbia">
-
-			
+		<div class="min-h-full h-screen bg-white dark:bg-offblack text-black dark:text-offwhite focus:outline-columbia">			
 			<div class="flex justify-between mb-10 mx-10">
 
 				<h3 class="text-center text-columbia-dark dark:text-columbia font-bold text-2xl mt-5 font-serif"> </h3>
+				<!-- <img src="FluffyRoundTrans.png" class="text-center text-columbia-dark dark:text-columbia font-bold text-2xl mt-5 font-serif h-10 w-10" alt="fluffy"> -->
 
 				<!-- dark mode button -->
 				<div class="fled justify-evenly mt-5 lg:mr-5">
@@ -105,7 +155,7 @@
 		
 		<!-- folder system -->
 		{#if root_folders.length > 0}
-			<div class="select-none max-w-xl lg:max-w-2xl mx-auto pl-4 pr-4 -pt-2 border-columbia-dark dark:border-columbia border-l rounded-bl-md">
+			<div class="select-none max-w-2xl mx-auto pl-4 pr-4 -pt-2 border-columbia-dark dark:border-columbia border-l rounded-bl-md">
 				{#each root_folders as folder_id (folder_id)}
 					<Directory id={folder_id} />
 				{/each}

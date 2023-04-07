@@ -15,12 +15,24 @@
     export let is_gallery = false;
     export let is_answerbar = false;
     let min_height = is_textfield ? "200px" : "75px";
-    min_height = is_gallery ? "25px" : min_height;
     let max_height = is_textfield ? "600px" : "300px"
     max_height = is_answerbar ? "100px" : max_height;
     min_height = is_answerbar ? "10px" : min_height;
     export let content = "" 
     export let autofocus = false
+
+    if (is_gallery) {
+      max_height = "110px"
+      min_height = "110px"
+    }
+
+
+    export let is_expl = false
+    if (is_expl) {
+      max_height = "120px"
+      min_height = "120px"
+
+    }
 
     let overflow = is_answerbar ? "scroll" : "scroll" 
 
@@ -135,7 +147,6 @@
       }
     });
   };
-
 
 
   </script>

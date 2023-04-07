@@ -333,7 +333,7 @@
 	{#if entryData.entry_quota != null && entryData.entry_type != 'folder'} 
 	
 
-		<div class=" space-x-1 ">
+		<div class=" space-x-0 ">
 	  
 			<div class="float-right z-40 ">
 				<Hint placement="top" text="{entryData.entry_quota.review_left} review">
@@ -354,11 +354,27 @@
 			</div>
 
 		</div>
-	{:else}
-		<div class=" space-x-1 ">
-			<div class="float-right z-40 "><div class="h-6 w-5 text-blacktext dark:text-columbia font-serif"> </div></div>
-			<div class="float-right z-30"><div class="h-6 w-5 text-blacktext dark:text-columbia font-serif"> </div> </div>
-			<div class="float-right"><div class="h-6 w-5 text-blacktext dark:text-columbia font-serif"> </div></div>
+	{:else if entryData.entry_type=="ankibox" || entryData.entry_type=="quota"}
+		<div class=" space-x-0 ">
+	  
+			<div class="float-right z-40 ">
+				<Hint placement="top" text="0 review">
+					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">0</div>
+				</Hint>
+			</div>
+
+			<div class="float-right z-30">
+				<Hint placement="top" text="0 new">
+					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">0</div>
+				</Hint>
+			</div>
+
+			<div class="float-right">
+				<Hint placement="top" text="0 practiced">
+					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">0</div>
+				</Hint>
+			</div>
+
 		</div>
 
 	{/if}
@@ -401,21 +417,21 @@
 		<ul class="px-1 py-2 text-sm ml-3 border-r-[1px] border-columbia -border-spacing-4 rounded-lg" aria-labelledby="dropdownRightEndButton">
 			{#if entryData.entry_type === "folder" }
 				<li>
-					<div role="button" 
+					<div role="button" tabindex="0"
 						on:click={() => { createFolderTrayOpen = true; }} on:keypress={() => { createFolderTrayOpen = true; }}
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg border-columbia block px-4 py-2 dark:hover:text-whitetext">
 						Create Folder
 					</div>
 				</li>
 				<li>
-					<div role="button"
+					<div role="button" tabindex="0"
 						on:click={() => { createDeadlineTrayOpen = true; }} on:keypress={() => { createDeadlineTrayOpen = true; }}
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg block border-columbia px-4 py-2 dark:hover:text-white">
 						Create Deadline
 					</div>
 				</li>
 				<li>
-					<div role="button"
+					<div role="button" tabindex="0"
 						on:click={() => { createAnkiTrayOpen = true; }} on:keypress={() => { createDeadlineTrayOpen = true; }}
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg block border-columbia px-4 py-2 dark:hover:text-white">
 						Create Anki Box
@@ -425,7 +441,7 @@
 
 			{#if entryData.entry_type === "deadline" && !deadline_complete || entryData.entry_type === "ankibox"}
 				<li>
-					<div role="button" 
+					<div role="button" tabindex="0"
 						on:click={() => { createDeckTrayOpen = true; }} on:keypress={() => { createDeckTrayOpen = true; }}
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg  block px-4 py-2 border-columbia dark:hover:text-white">
 						Create Deck
@@ -434,7 +450,7 @@
 			{/if}
 
 			<li>
-				<div role="button" 
+				<div role="button" tabindex="0"
 					on:click={() => { renameTrayOpen = true; }} on:keypress={() => { renameTrayOpen = true; }}
 					class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark  rounded-lg block px-4 py-2 border-columbia dark:hover:text-white">
 					Rename
@@ -443,7 +459,7 @@
 
 			{#if entryData.entry_type !== "deck" && !$rootFolderStore.includes(entryData.entry_id)}
 				<li>
-					<div role="button" 
+					<div role="button" tabindex="0"
 						on:click={() => { moveTrayOpen = true; }} on:keypress={() => { moveTrayOpen = true; }}
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg block px-4 py-2 border-columbia dark:hover:text-white">
 						Move
@@ -453,7 +469,7 @@
 
 			{#if !$rootFolderStore.includes(entryData.entry_id)}
 				<li>
-					<div role="button" 
+					<div role="button" tabindex="0"
 						on:click={handleDelete } on:keypress={ handleDelete }
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg  block px-4 py-2 border-columbia dark:hover:text-white">
 						Delete

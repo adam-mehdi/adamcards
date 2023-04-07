@@ -10,6 +10,7 @@
 	import { onMount, onDestroy } from 'svelte'
 	import TextfieldEditor from '$lib/TextfieldEditor.svelte'
 
+	
 
 
 	
@@ -18,6 +19,7 @@
 	interface CenterPanel {
 		front: string,
 		back: string,
+		expl: string,
 		prompt: string,
 		selected_deck: string,
 		display_all: boolean,
@@ -41,6 +43,7 @@
 	interface CardDisplay {
 		is_visible: boolean,
 		deck_name: string,
+		show_expl: boolean,
 		card: Card
 	}
 
@@ -55,6 +58,7 @@
 	let panel: CenterPanel = {
 		"front": '',
 		"back": '',
+		"expl": '',
 		"prompt": '',
 		"display_textfield": $configStore.is_textfield,
 		"textfield": '',
@@ -69,6 +73,7 @@
 
 
 	async function getDeadlineContents() {
+
 		deadlineContents = await invoke('read_deadline_contents', { deadlineId });
 		if (deadlineContents.length == 0) return
 		panel.selected_deck = deadlineContents[0].deck_name.toString();
@@ -77,7 +82,8 @@
 			for (let card of deckContents.cards) {
 				let card_display: CardDisplay = { 
 					"is_visible": false, 
-					"deck_name": deckContents.deck_name, 
+					"deck_name": deckContents.deck_name,
+					"show_expl": true,
 					card 
 				};
 				card_gallery.push(card_display);
@@ -116,7 +122,6 @@
 			"deck_id": deckContents.deck_id,
 			"cards": newCards
 		}
-		console.log(deckNewContents)
 		let ids: number[] = await invoke("create_cards", { deadlineId, deckNewContents });
 		for (const [idx, new_card] of deckNewContents.cards.entries()) {
 			let card = {
@@ -129,10 +134,12 @@
 			let cardDisplay = { 
 				"is_visible": false, 
 				"deck_name": deckContents.deck_name,
-				"card": card
+				"card": card,
+				"show_expl": true
 			}
 			cardDisplay.is_visible = get_is_displayed(cardDisplay)
 			card_gallery.splice(0, 0, cardDisplay)
+			// getExplanation(cardDisplay)
 		}
 		card_gallery = card_gallery
 	}
@@ -144,6 +151,7 @@
 		panel.front = ''
 		panel.back = ''
 		clearEditorToggle = !clearEditorToggle;
+
 	}
 
 	async function createCardTextfield() {
@@ -320,7 +328,8 @@
 		// entry_deadline_date, deadline_complete
 		if (await checkDeadlinePast()) return
 
-		if (newName == "") return
+		
+		if (newName == "" || deadlineContents.some((x) => x.deck_name === newName)) return
 
 		let md = {
 			entry_type: "deck",
@@ -337,12 +346,18 @@
     	el.focus()
   	}
 
+	function toggleShowExplanation(card: CardDisplay) {
+		card.show_expl = !card.show_expl;
+		card_gallery = card_gallery
+	}
+
 
 </script>
 
 	
 <div class="{isDarkMode ? "dark" : ""}">
-	<div class="min-h-screen h-full bg-offwhite dark:bg-offblack">
+	<div class="min-h-screen h-full bg-offwhite dark:bg-offblack ">
+		<div class="">
 		
 		<div class="flex justify-start space-x-5 mx-10">
 			
@@ -434,9 +449,10 @@
 
 			{#key clearEditorToggle}
 			{#if !panel.display_textfield}
+				
 				<!-- front field -->
 				<div class="h-full max-h-80 mx-2 mb-1 border-l rounded-md border-columbia" >         
-					<div class="h-full p-1 rounded-lg">
+					<div class="h-full p-1 rounded-lg ">
 						<TextfieldEditor bind:content={panel.front} autofocus={true}/>
 					</div>
 				</div>          
@@ -579,36 +595,75 @@
 				<div
 					animate:flip={{ duration: dragDuration }}
 					style="display: {card.is_visible ? '' : 'none'};"
-					class="flex flex-row rounded-lg text-offblack dark:text-offwhite mx-auto w-10/12 sm:w-[600px] md:w-[650px] lg:w-[800px]  dark:bg-opacity-70 border-columbia bg-slate-700 bg-opacity-5 "
+					class="rounded-lg text-offblack dark:text-offwhite mx-auto w-10/12 sm:w-[600px] md:w-[650px] lg:w-[800px] dark:bg-opacity-70 border-columbia bg-slate-700 bg-opacity-5 "
 					draggable="true"
 					on:dragstart={() => draggingCard = card}
 					on:dragend={() => draggingCard = undefined}
 					on:dragenter={() => swapWith(card)}
 					on:dragover|preventDefault
 				>
-
 					<!-- card fields -->
-						
-						<div on:focusout={() => updateCard(card.card)}  class="ml-3 mr-0 w-1/2 m-3 rounded-lg border-l border-columbia border-spacing-4 px-2 py-2">
-							<TextfieldEditor bind:content={card.card.front} is_gallery={true}/>
+				<div class="flex flex-row">
+					<div class="flex flex-col gap-0 py-3 pr-2 pl-2 w-full h-full">
+						<div class="flex flex-row space-x-0 w-full h-full ">
+							<div class="w-1/2 flex-1 border-x border-t { !card.show_expl ?  "border-b" : "rounded-b-none" } rounded-lg border-dotted border-columbia">
+								<div on:focusout={() => updateCard(card.card)} class="w-full px-1 py-2 rounded-lg">
+									<TextfieldEditor bind:content={card.card.front} is_gallery={true}/>
+								</div>
+							</div>						
+							
+
+							<div class="w-1/2 flex-1 border-r border-t { !card.show_expl ?  "border-b" : "rounded-b-none" } rounded-lg border-dotted border-columbia">
+								<div on:focusout={() => updateCard(card.card)} class="w-full  px-2 py-2 rounded-lg">
+									<TextfieldEditor bind:content={card.card.back} is_gallery={true}/>
+								</div>	
+							</div>
 						</div>
-
-						<div class="border-r-2 opacity-30 border-columbia"></div>
-
-						<!-- <div class="card-hr mt-5" /> -->
-						<div on:focusout={() => updateCard(card.card)} class="ml-0 mr-1 w-1/2 my-3 border-r rounded-lg rounded-tr-sm border-columbia border-spacing-4 px-4 py-2">
-							<TextfieldEditor bind:content={card.card.back} is_gallery={true}/>
-						</div>
-
 						
-						<span class="cursor-pointer float-right m-1 right-1 bottom-2`` hover:opacity-100 opacity-50 text-md relative text-columbia" on:click={() => deleteCard(card)} on:keydown={() => deleteCard(card)}> 
-							✕
+
+						{#if card.show_expl}
+							<div class="">
+								<div on:focusout={() => updateCard(card.card)} class="w-full opacity-90 border-x border-y rounded-b-lg rounded-tr-sm border-dotted border-columbia border-spacing-4 px-2 py-2">
+									<TextfieldEditor bind:content={panel.expl} is_expl={true}/>
+								</div>					
+							</div>
+						{/if}
+						
+
+					</div>
+					<div class="flex flex-col justify-between -mr1">
+						<span class="cursor-pointer hover:opacity-100 pt-3 right-1 opacity-50 text-md relative text-columbia" on:click={() => deleteCard(card)} on:keydown={() => deleteCard(card)}> 
+							<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+								<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+							  </svg>
+							  
 						</span>
-					
+
+						<span class="cursor-pointer hover:opacity-100 pb-1 right-2 pl-1 bottom-2 opacity-50 relative text-md text-columbia" on:click={() => toggleShowExplanation(card)} on:keydown={() => toggleShowExplanation(card)}> 
+							{#if !card.show_expl}
+								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M19.5 5.25l-7.5 7.5-7.5-7.5m15 6l-7.5 7.5-7.5-7.5" />
+								</svg>
+							{:else}
+								<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+									<path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l7.5-7.5 7.5 7.5m-15 6l7.5-7.5 7.5 7.5" />
+								</svg>
+							
+							{/if}
+							
+						</span>
+
+					 </div>
+
 				</div>
+					
+
+				</div>
+
 			{/each}
 		</div>
-		<div class="flex flex-row absolute bottom-0 left-4"	></div>
+		<!-- <div class="flex flex-row absolute bottom-0 left-4"	></div> -->
+	</div>
 	</div>
 
 	<!-- <div class="h-32"></div> -->
@@ -625,5 +680,4 @@
     }                                                                           
 
 
-
-</style>
+</style> 
