@@ -7,6 +7,7 @@
 	import folderSystemStore from '$lib/stores/folderSystemStore'
 	import rootFolderStore from '$lib/stores/rootFolderStore'
 	import reloadStore from '$lib/stores/reloadStore'
+	import { fade } from "svelte/transition";
 
 
 	export let entryData: EntryData;
@@ -50,6 +51,7 @@
 	let deadlineDate: string | null = getNextWeekDate();
 	let deadlineTime: string | null = "14:00";
 	let entered_dup_name = false;
+	let new_per_day = "8";
 
 
 	function getNextWeekDate(): string {
@@ -69,7 +71,8 @@
 	interface EntryMetadata {
 		entry_type: string,
 		deadline_date: string | null,
-		study_intensity: number | null
+		study_intensity: number | null,
+		new_per_day: number
 	}
 
 	// settings tray buttons
@@ -112,7 +115,8 @@
 		let md: EntryMetadata = {
 			entry_type: newType,
 			deadline_date: new_deadline_date,
-			study_intensity: intensity
+			study_intensity: intensity,
+			new_per_day: parseInt(new_per_day)
 		}
 		newName = newName.slice(0, 29);
 		invoke("create_entry", { "entryName": newName, parentId, md});
@@ -333,23 +337,24 @@
 	{#if entryData.entry_quota != null && entryData.entry_type != 'folder'} 
 	
 
-		<div class=" space-x-0 ">
+		<div class=" space-x-0">
 	  
-			<div class="float-right z-40 ">
+			<div class="float-right z-40">
 				<Hint placement="top" text="{entryData.entry_quota.review_left} review">
-					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.review_left} </div>
+					<div class="h-6 w-7 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.review_left}</div>
 				</Hint>
 			</div>
 
+
 			<div class="float-right z-30">
 				<Hint placement="top" text="{entryData.entry_quota.new_left} new">
-					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.new_left} </div>
+					<div class="h-6 w-7 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.new_left}</div>
 				</Hint>
 			</div>
 
 			<div class="float-right">
 				<Hint placement="top" text="{entryData.entry_quota.num_progressed} practiced">
-					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.num_progressed} </div>
+					<div class="h-6 w-7 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.num_progressed} </div>
 				</Hint>
 			</div>
 
@@ -381,20 +386,8 @@
 		
 
 
-	<!-- Gear to open settings tray -->
+	<!-- vertical ellipsis to open settings tray -->
 	<div class="z-40">
-		<!-- <Hint placement="top" text="Create">
-			<button class="float-right ring-columbia focus:outline-none focus:ring duration-75 rounded-md -ring-offset-4" on:click|stopPropagation={toggleSettingsTray}>
-				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
-					<path fill-rule="evenodd" d="M12 5.25a.75.75 0 01.75.75v5.25H18a.75.75 0 010 1.5h-5.25V18a.75.75 0 01-1.5 0v-5.25H6a.75.75 0 010-1.5h5.25V6a.75.75 0 01.75-.75z" clip-rule="evenodd" />
-				  </svg>
-
-				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
-					<path fill-rule="evenodd" d="M12 3.75a.75.75 0 01.75.75v6.75h6.75a.75.75 0 010 1.5h-6.75v6.75a.75.75 0 01-1.5 0v-6.75H4.5a.75.75 0 010-1.5h6.75V4.5a.75.75 0 01.75-.75z" clip-rule="evenodd" />
-				</svg>
-			</button>
-		</Hint> -->
-
 		<Hint placement="top" text="Actions">
 			<button class="float-right ring-columbia focus:outline-none focus:ring duration-75 rounded-md -ring-offset-4" on:click|stopPropagation={toggleSettingsTray}>
 					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
@@ -408,6 +401,7 @@
 
 	{#if settingsTrayOpen}
 	<div
+		in:fade="{{ duration: 150 }}" out:fade="{{ duration: 150 }}"
 		class="absolute flex justify-between z-50 divide-y divide-gray-100 rounded-lg {!actionTrayOpen ? "w-28" : "w-64"} bg-white dark:bg-slate-700 text-blacktext dark:text-whitetext"
 		use:clickOutside on:click_outside|capture={handleClickOutside}> <!-- error on `click_outside` is due to svelte; like a necessary deprecation error, ignore it -->
 
@@ -423,18 +417,18 @@
 						Create Folder
 					</div>
 				</li>
-				<li>
+				<!-- <li>
 					<div role="button" tabindex="0"
 						on:click={() => { createDeadlineTrayOpen = true; }} on:keypress={() => { createDeadlineTrayOpen = true; }}
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg block border-columbia px-4 py-2 dark:hover:text-white">
 						Create Deadline
 					</div>
-				</li>
+				</li> -->
 				<li>
 					<div role="button" tabindex="0"
 						on:click={() => { createAnkiTrayOpen = true; }} on:keypress={() => { createDeadlineTrayOpen = true; }}
 						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg block border-columbia px-4 py-2 dark:hover:text-white">
-						Create Anki Box
+						Create Subject
 					</div>
 				</li>
 			{/if}
@@ -482,7 +476,7 @@
 		<!-- open deadline tray -->
 		{:else}
 
-			<form class="w-full m-5 py-1"
+			<form class="w-full m-5 py-1" 
 					on:submit={() => {
 						settingsTrayOpen = false;
 						if (renameTrayOpen) handleRename() 
@@ -493,7 +487,15 @@
 				<div class="border-b border-columbia py-2 grid {createDeadlineTrayOpen ? "grid-rows-4" : "grid-rows-2" } grid-cols-3 gap-2">
 					<!-- name for Create -->
 					{#if !moveTrayOpen && !renameTrayOpen && !resetDeadlineTrayOpen}
-						<input type="text" use:focus placeholder="Enter Name" bind:value={newName} class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring duration-75"/>
+						<input type="text" use:focus placeholder="Enter Name" bind:value={newName} class="h-8 {createDeckTrayOpen ? "col-span-2" : "col-span-3"} hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring duration-75"/>
+
+						 {#if createDeckTrayOpen}
+							<Hint placement="top" text="Set New Cards Per Day">
+								<input bind:value={new_per_day} type="number" id="quantity" name="quantity" min="1" max="100" step="1"
+									class="h-8 col-span-1 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-3 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75">
+							</Hint>
+						{/if}
+		
 					<!-- Rename -->
 					{:else if !moveTrayOpen && renameTrayOpen && !resetDeadlineTrayOpen} 
 						<input type="text" use:focus placeholder="Enter Name" bind:value={newName} class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring duration-75"/>

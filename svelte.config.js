@@ -17,7 +17,7 @@ const config = {
 		adapter: adapter(
 			{
 				fallback: 'failure.html'
-			}
+			},
 		),
 
 		prerender: { 

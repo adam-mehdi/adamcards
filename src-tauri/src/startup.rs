@@ -1,3 +1,7 @@
+#![allow(unused_imports)]
+#![allow(unused_variables)]
+#![allow(dead_code)]
+
 use chrono::{Local, DateTime, Duration}; ///, Utc};
 
 
@@ -8,7 +12,12 @@ use crate::edit::{write_quotas, insert_deck_contents, DeckNewContents};
 use crate::models::NewCard;
 
 
-use crate::home::{folder_system_is_empty, insert_entry, insert_deadline, insert_deck};
+use crate::home::{
+    folder_system_is_empty, 
+    insert_entry, 
+    // insert_deadline, 
+    insert_deck
+};
 
 
 /**
@@ -20,7 +29,7 @@ pub fn init_root_folder(conn: &mut SqliteConnection) -> bool {
     }
     use crate::schema::{entries, folders, userconfig};
 
-    let entry_name = "My Trunk";
+    let entry_name = "My Cards";
     let is_expanded: Option<bool> = Some(true);
 
     // create_entry(state, "My Trunk", None, md);
@@ -52,36 +61,37 @@ pub fn init_root_folder(conn: &mut SqliteConnection) -> bool {
 
 
 pub fn init_getting_started(conn: &mut SqliteConnection) {
-    use crate::schema::entries;
+    // use crate::schema::entries;
 
-    let parent_id = entries::table
-        .select(entries::id)
-        .get_result::<i32>(conn)
-        .expect("failed to get parent id");
+    // let parent_id = entries::table
+    //     .select(entries::id)
+    //     .get_result::<i32>(conn)
+    //     .expect("failed to get parent id");
 
     // in two days 
-    let now: DateTime<Local> = Local::now();
-    let next_week = now + Duration::days(1) + Duration::minutes(150);
-    let formatted_date = next_week.format("%Y-%m-%d %H:%M:%S").to_string();
+    // let now: DateTime<Local> = Local::now();
+    // let next_week = now + Duration::days(1) + Duration::minutes(150);
+    // let formatted_date = next_week.format("%Y-%m-%d %H:%M:%S").to_string();
 
-    // insert starter deadline
-    let deadline_id = insert_entry(conn, Some(parent_id), "How to use Adam", "deadline");
-    insert_deadline(conn, deadline_id, Some(formatted_date), Some(1), false);
+    // // insert starter deadline
+    // let deadline_id = insert_entry(conn, Some(parent_id), "How to use Adam", "deadline");
+    // insert_deadline(conn, deadline_id, Some(formatted_date), Some(1), false);
 
-    // insert deck 1: create (folder -> deadline -> deck), edit (create cards), review (until deadline)
-    insert_starting_deck(conn, deadline_id, "1. Fundamentals");
+    // // insert deck 1: create (folder -> deadline -> deck), edit (create cards), review (until deadline)
+    // insert_starting_deck(conn, deadline_id, "1. Fundamentals");
     
-    // insert deck 2: actions, textfield, prompt bar, reset deadline
-    insert_starting_deck(conn, deadline_id, "2. Advanced Features");
+    // // insert deck 2: actions, textfield, prompt bar, reset deadline
+    // insert_starting_deck(conn, deadline_id, "2. Advanced Features");
 
-    // insert deck 3: synthesis, rephrasing, explanations, instruction, upgrade, future
-    insert_starting_deck(conn, deadline_id, "3. AI Magic");
+    // // insert deck 3: synthesis, rephrasing, explanations, instruction, upgrade, future
+    // insert_starting_deck(conn, deadline_id, "3. AI Magic");
 
+    return;
 }
 
 fn insert_starting_deck(conn: &mut SqliteConnection, deadline_id: i32, deck_name: &str)  {
     let deck_id = insert_entry(conn, Some(deadline_id), deck_name, "deck");
-    insert_deck(conn, deck_id, deadline_id);
+    insert_deck(conn, deck_id, deadline_id, Some(10));
 
     let deck_contents: DeckNewContents = get_starting_deck_contents(deck_id, deck_name.to_string());
     

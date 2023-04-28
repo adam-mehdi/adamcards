@@ -10,8 +10,7 @@
     
   
     let element: HTMLElement
-    export let textFieldId: string = "";
-    export let is_useranswer = false;
+    
     export let is_textfield = false;
     export let is_gallery = false;
     export let is_answerbar = false;
@@ -34,14 +33,6 @@
       min_height = "120px"
 
     }
-
-    export let is_reviewfront = false
-    export let is_reviewback = false
-    if (is_reviewfront) {
-      max_height = "120px"
-    }
-    if (is_reviewback) 
-      max_height = "125px"
 
     let overflow = is_answerbar ? "scroll" : "scroll" 
 
@@ -77,17 +68,16 @@
                   },
                 }),
                 Image.configure({
-                  inline: false,
+                  inline: true,
                   HTMLAttributes: {
-                    class: 'rounded-lg object-contain max-h-64 w-3/4 mx-auto',
-                  }
-                  
+                    class: 'rounded-lg object-contain max-h-64 w-full',
+                  },
 
                 })
             ],
             editorProps: {
                 attributes: {
-                    class: 'prose prose-light dark:prose-invert prose-md mx-auto focus:outline-none code:font-mono leading-7',
+                    class: 'prose dark:prose-invert prose-md mx-auto focus:outline-none font-sans code:font-mono leading-7',
                 },
                 
             },
@@ -161,7 +151,7 @@
   </script>
   
 {#if !loading}
-<div id={textFieldId} class="rounded-lg p-2 cursor-text font-[350] {!is_useranswer ? "ring-columbia focus-within:ring-2" : ""} transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
+<div class="rounded-lg p-2 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
   <div 
     bind:this={element} 
     class="ProseMirror" 
@@ -171,9 +161,9 @@
 </div>
 
 {:else}
-<div class="rounded-lg p-2 cursor-text focus-within:ring-2 font-light ring-columbia transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
+<div class="rounded-lg p-2 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
   <div style="{!is_answerbar ? `max-height: ${max_height};` : "padding-right: 23px;"}; min-height: {min_height}; overflow: {overflow}">
-    {@html content}
+    {content}
   </div>
 </div>
 

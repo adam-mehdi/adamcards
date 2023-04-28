@@ -30,6 +30,7 @@ pub struct EntryMetadata {
     pub entry_type: String,
     pub deadline_date: Option<String>,
     pub study_intensity: Option<i32>,
+    pub new_per_day: Option<i32>
 }
 
 
@@ -298,6 +299,10 @@ pub fn get_deck_quota(conn: &mut SqliteConnection, deck_id: i32) -> Option<Quota
                 std::cmp::min(new_per_day - new_prac, num_new), 
                 0
             );
+            num_review = std::cmp::max( // FIX FOR REVIEW
+                std::cmp::min(num_review - rev_prac, num_new), 
+                0
+            );
         } else {
             insert_into(ankiquotas::table)
                 .values((
@@ -414,7 +419,7 @@ pub fn create_entry(state: tauri::State<DatabaseState>, entry_name: &str, parent
     match entry_type {
         "folder" => { insert_into(folders::table).values(folders::id.eq(entry_id)).execute(conn).unwrap(); },
         "deadline" | "ankibox" => insert_deadline(conn, entry_id, md.deadline_date, md.study_intensity, entry_type == "ankibox"),
-        "deck" => insert_deck(conn, entry_id, parent_id.expect("no parent to deck")),
+        "deck" => insert_deck(conn, entry_id, parent_id.expect("no parent to deck"), md.new_per_day),
         _ => eprintln!("failed to create entry")
 
     }
@@ -450,7 +455,6 @@ pub fn insert_entry(conn: &mut SqliteConnection, parent_id: Option<i32>, entry_n
     entry_id
 }
 
-
 pub fn insert_deadline(conn: &mut SqliteConnection, entry_id: i32, deadline_date: Option<String>, study_intensity: Option<i32>, is_anki: bool) {
     use crate::schema::deadlines;
 
@@ -473,7 +477,7 @@ pub fn insert_deadline(conn: &mut SqliteConnection, entry_id: i32, deadline_date
 
 }
 
-pub fn insert_deck(conn: &mut SqliteConnection, deck_id: i32, deadline_id: i32) {
+pub fn insert_deck(conn: &mut SqliteConnection, deck_id: i32, deadline_id: i32, new_per_day: Option<i32>) {
     use crate::schema::{decks, deadlines};
 
     let is_anki = deadlines::table
@@ -482,10 +486,10 @@ pub fn insert_deck(conn: &mut SqliteConnection, deck_id: i32, deadline_id: i32) 
         .get_result::<bool>(conn)
         .expect("failed to get parent deadline");
 
-    let (num_boxes, new_per_day) = if !is_anki { 
-        (Some(compute_num_boxes_from_id(conn, deadline_id)), None)
+    let num_boxes = if !is_anki { 
+        Some(compute_num_boxes_from_id(conn, deadline_id))
     } else {
-        (None, Some(5)) // new_per_day is 5 by default 
+        None // new_per_day is 5 by default 
     };
 
     insert_into(decks::table)

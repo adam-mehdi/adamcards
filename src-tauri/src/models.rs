@@ -25,7 +25,8 @@ pub struct QuotaRecord {
 pub struct Card {
     pub id: i32,
     pub front: String,
-    pub back: String
+    pub back: String,
+    pub explanation: Option<String>
 }
 
 #[derive(Deserialize, Serialize, Insertable, Debug, AsChangeset)]

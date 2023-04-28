@@ -63,14 +63,15 @@ pub fn read_deadline_contents(state: tauri::State<DatabaseState>, deadline_id: i
 
         let card_data = cards::table
             .filter(cards::id.eq_any(item_ids))
-            .select((cards::id, cards::front, cards::back))
-            .get_results::<(i32, String, String)>(conn)
+            .select((cards::id, cards::front, cards::back, cards::explanation))
+            .get_results::<(i32, String, String, Option<String>)>(conn)
             .expect("failed to get card contents");
 
         let mut cards: Vec<Card> = Vec::new();
         for card in card_data {
-            let (id, front, back) = card;
-            cards.push( Card { id, front, back });
+            let (id, front, back, explanation) = card;
+
+            cards.push( Card { id, front, back, explanation });
         }
 
 
@@ -107,6 +108,14 @@ pub fn delete_card(state: tauri::State<DatabaseState>, card_id: i32) {
         .get_result::<i32>(conn)
         .expect("failed to retrieve deadline id");
 
+    let is_anki = get_is_anki(conn, deadline_id);
+    if is_anki {
+        delete(cards::table.filter(cards::id.eq(card_id)))
+            .execute(conn)
+            .expect("failed to delete deck item");
+        return;
+    }
+
     let box_pos = cards::table
         .filter(cards::id.eq(card_id))
         .select(cards::box_position)
@@ -118,10 +127,6 @@ pub fn delete_card(state: tauri::State<DatabaseState>, card_id: i32) {
         .execute(conn)
         .expect("failed to delete deck item");
 
-    let is_anki = get_is_anki(conn, deadline_id);
-    if is_anki {
-        return;
-    }
     
     let days_to_go = get_days_to_go(conn, deadline_id);
     let num_boxes = compute_num_boxes_from_id(conn, deadline_id);
@@ -260,7 +265,7 @@ pub fn update_card(state: tauri::State<DatabaseState>, card: Card) {
     // add new cards to `cards` database
     update(cards::table)
         .filter(cards::id.eq(card.id))
-        .set((cards::front.eq(card.front), cards::back.eq(card.back)))
+        .set((cards::front.eq(card.front), cards::back.eq(card.back), cards::explanation.eq(card.explanation)))
         .execute(conn)
         .expect("failed to insert quota record");
 }

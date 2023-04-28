@@ -167,6 +167,7 @@ pub struct CardInfo {
     pub interval: i32
 }
 
+// DEBUGGING PURPOSES
 #[tauri::command] 
 pub fn print_cards(state: State<DatabaseState>, deadline_id: i32) -> Vec<(i32, Option<i32>, Option<i32>, String)> {
     use crate::schema::cards;
@@ -250,10 +251,10 @@ fn pop_new_card(conn: &mut SqliteConnection, new_ids: &Vec<i32>, deck_id: i32) -
     // get the first card in the chosen deck whose id is in new_ids
     let new_card = cards::table
         .filter(cards::id.eq_any(new_ids).and(cards::deck_id.eq(deck_id)))
-        .select((cards::id, cards::front, cards::back))
+        .select((cards::id, cards::front, cards::back, cards::explanation))
         .order(cards::queue_score.asc())
         // .order(cards::queue_score.asc().nulls_first()) // nulls_first means nulls come first with ascending order
-        .first::<(i32, String, String)>(conn)
+        .first::<(i32, String, String, Option<String>)>(conn)
         .expect("failed to pop new card");
 
     let deck_name = entries::table
@@ -269,7 +270,8 @@ fn pop_new_card(conn: &mut SqliteConnection, new_ids: &Vec<i32>, deck_id: i32) -
         card: Card {
             id: new_card.0,
             front: new_card.1,
-            back: new_card.2
+            back: new_card.2,
+            explanation: new_card.3
         }
     }
 
@@ -304,9 +306,9 @@ fn pop_review_card(conn: &mut SqliteConnection, deck_id: i32) -> ReviewCard {
 
     let card = cards::table
         .filter(cards::id.eq_any(card_ids).and(cards::box_position.eq(box_pos)))
-        .select((cards::id, cards::front, cards::back))
+        .select((cards::id, cards::front, cards::back, cards::explanation))
         .order(cards::queue_score.asc())
-        .first::<(i32, String, String)>(conn)
+        .first::<(i32, String, String, Option<String>)>(conn)
         .expect("failed to order cards");
 
     let deck_name = entries::table
@@ -321,7 +323,8 @@ fn pop_review_card(conn: &mut SqliteConnection, deck_id: i32) -> ReviewCard {
         card: Card {
             id: card.0,
             front: card.1,
-            back:card.2
+            back: card.2,
+            explanation: card.3
         }
     }
 
@@ -568,8 +571,8 @@ pub fn get_last_card(state: State<DatabaseState>, review_state: State<ReviewSess
                 .expect("failed to update box pos");
             let card = cards::table
                 .filter(cards::id.eq(response.card_id))
-                .select((cards::id, cards::front, cards::back))
-                .get_result::<(i32, String, String)>(conn)
+                .select((cards::id, cards::front, cards::back, cards::explanation))
+                .get_result::<(i32, String, String, Option<String>)>(conn)
                 .expect("failed to get card contents");
                 
             let card_results = Some(CardResults {
@@ -578,7 +581,7 @@ pub fn get_last_card(state: State<DatabaseState>, review_state: State<ReviewSess
                 card: ReviewCard { 
                     stack_before: response.stack_before.clone(), 
                     deck_name: deck_name, 
-                    card: Card { id: card.0, front: card.1, back: card.2 }
+                    card: Card { id: card.0, front: card.1, back: card.2, explanation: card.3}
                 }
             });
             *curr_card = Some(response);

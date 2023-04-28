@@ -37,7 +37,9 @@
 		"@tiptap/pm": "^2.0.1",
 		"@tiptap/starter-kit": "^2.0.1",
 		"dotenv": "^16.0.3",
+		"gpt3-tokenizer": "^1.1.5",
 		"openai": "^3.2.1",
+		"sse.js": "^0.6.1",
 		"svelte-hint": "^1.1.0",
 		"tiptap": "^1.32.2",
 		"vite-plugin-wasm": "^3.2.2"

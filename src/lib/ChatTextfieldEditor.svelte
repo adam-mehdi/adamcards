@@ -10,42 +10,8 @@
     
   
     let element: HTMLElement
-    export let textFieldId: string = "";
-    export let is_useranswer = false;
-    export let is_textfield = false;
-    export let is_gallery = false;
-    export let is_answerbar = false;
-    let min_height = is_textfield ? "200px" : "75px";
-    let max_height = is_textfield ? "600px" : "300px"
-    max_height = is_answerbar ? "100px" : max_height;
-    min_height = is_answerbar ? "10px" : min_height;
-    export let content = "" 
-    export let autofocus = false
-
-    if (is_gallery) {
-      max_height = "140px"
-      min_height = "140px"
-    }
-
-
-    export let is_expl = false
-    if (is_expl) {
-      max_height = "120px"
-      min_height = "120px"
-
-    }
-
-    export let is_reviewfront = false
-    export let is_reviewback = false
-    if (is_reviewfront) {
-      max_height = "120px"
-    }
-    if (is_reviewback) 
-      max_height = "125px"
-
-    let overflow = is_answerbar ? "scroll" : "scroll" 
-
-
+    export let index: number;
+    export let content = "";
 
     let editor: Editor
     const ArrowReplacer = Extension.create({
@@ -58,8 +24,6 @@
             ]
         },
     })
-    
-    export let loading = false;
 
     onMount(() => {
         editor = new Editor({
@@ -77,23 +41,21 @@
                   },
                 }),
                 Image.configure({
-                  inline: false,
+                  inline: true,
                   HTMLAttributes: {
-                    class: 'rounded-lg object-contain max-h-64 w-3/4 mx-auto',
-                  }
-                  
+                    class: 'rounded-lg object-contain max-h-64 w-full',
+                  },
 
                 })
             ],
             editorProps: {
                 attributes: {
-                    class: 'prose prose-light dark:prose-invert prose-md mx-auto focus:outline-none code:font-mono leading-7',
+                    class: 'prose prose-light dark:prose-invert prose-sm mx-auto focus:outline-none code:font-mono leading-5',
                 },
                 
             },
             content: content,
-            autofocus: autofocus,
-            editable: true,
+            editable: false,
             injectCSS: false,
             onTransaction: () => {
                 editor = editor // force re-render so `editor.isActive` works as expected
@@ -160,35 +122,9 @@
 
   </script>
   
-{#if !loading}
-<div id={textFieldId} class="rounded-lg p-2 cursor-text font-[350] {!is_useranswer ? "ring-columbia focus-within:ring-2" : ""} transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
-  <div 
-    bind:this={element} 
-    class="ProseMirror" 
-    style="{!is_answerbar ? `max-height: ${max_height};` : "padding-right: 23px;"}; min-height: {min_height}; overflow: {overflow}"
-    on:paste={handlePaste} 
-    />
-</div>
 
-{:else}
-<div class="rounded-lg p-2 cursor-text focus-within:ring-2 font-light ring-columbia transition-opacity duration-100" on:click={focusEditor} on:keydown={focusEditor}>
-  <div style="{!is_answerbar ? `max-height: ${max_height};` : "padding-right: 23px;"}; min-height: {min_height}; overflow: {overflow}">
-    {@html content}
+  <div class="{index % 2 == 0 ? " bg-offwhite dark:bg-blacktext" : "font-light bg-platinum dark:bg-slate-700" } inline-block px-3 rounded-md p-2 m-2 mr-8 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100">
+    <div bind:this={element} class="mb-1" />
   </div>
-</div>
 
-{/if}
-
-  <!-- {#if editor}
-    {editor.getHTML()}
-  {/if} -->
-
-  <style>
-
-
-    .ProseMirror:focus {
-        outline: none;
-    }
-
-
-  </style>
+  

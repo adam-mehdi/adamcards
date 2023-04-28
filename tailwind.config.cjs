@@ -9,7 +9,7 @@ module.exports = {
 			'columbia': "#B9D9ED",   // columbia blue
 			'pink': "#F9A7B0",
 			'inverted-columbia': "#462612",
-			'columbia-dark': "#191970",   // midnight blue
+			'columbia-dark': "#69B3E7",   // midnight blue
 			'offwhite': "#faf9f6", 	 // platinum from whiskey listings drop shadows
 			'offblack': "#202020",   // same as obsidian theme background
 			'whitetext': "#dcddde",  // white text from obsidian dark theme

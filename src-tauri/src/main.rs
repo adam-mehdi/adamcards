@@ -44,6 +44,9 @@ use edit::{
   delete_card,
 };
 
+// mod chat;
+// use chat::get_explanation;
+
 mod utils;
 use utils::get_is_anki_frontend;
 
@@ -127,7 +130,7 @@ fn main() {
       get_last_card,
 
       // utils_db
-      get_is_anki_frontend
+      get_is_anki_frontend,
 
       ])
     // run application (boilerplate)

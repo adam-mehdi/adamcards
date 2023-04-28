@@ -4,21 +4,36 @@
 	import { quintOut } from 'svelte/easing';                                      
     import { crossfade } from 'svelte/transition';                                 
     import { flip } from 'svelte/animate';                                         
-	import { onDestroy } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
 	import configStore from '$lib/stores/configStore'
 	import Hint from 'svelte-hint';
 	import { fade } from 'svelte/transition';
 	import TextfieldEditor from '$lib/TextfieldEditor.svelte'
+	import ChatTextfieldEditor from '$lib/ChatTextfieldEditor.svelte'
+
+  	import type { ChatCompletionRequestMessage } from 'openai';
+	import { SSE } from 'sse.js';
+
 
 
 	// write buf_size - min_history every time
 	let isDarkMode = $configStore.is_dark_mode;
+
+	// onMount(() => {
+	// 	disableScrolling();
+	// });
+
+	// function disableScrolling() {
+	// 	document.body.style.overflow = 'hidden';
+	// }
+
 	
 	// FrontendCard contains properties that can be edited in the frontend
 	interface Card {
 		id: number,
 		front: string,
-		back: string
+		back: string,
+		explanation: string
 	}
 
 	interface ReviewCard {
@@ -41,6 +56,7 @@
 		studying: number[]
 	}
 
+	
 
 	/**
 	 * State for review session
@@ -77,8 +93,11 @@
 
 	async function getNextCard() {
 		cardIsRevealed = false;
+		messages = []
+		chatMessages = []
 
 		let card: ReviewCard | null = await invoke("get_next_card", {})
+		console.log(card)
 		
 		// if no card was returned, session is finished
 		if (!card) {
@@ -98,9 +117,12 @@
 		stacks.studying.push(study_card);
 
 		// re-render the DOM
+		showExplanation = false;
 		userAnswer = '';
+		resetAnswerBar = !resetAnswerBar;
+
 		stacks = stacks;
-		console.log(await invoke("print_cards", {deadlineId}))
+		// console.log(await invoke("print_cards", {deadlineId}))
 	}
 
 	function updateCard(card: Card) {
@@ -236,6 +258,7 @@
 
 	function revealCard() {
 		cardIsRevealed = true;
+		stacks.studying = stacks.studying
 	}
 
 
@@ -246,9 +269,15 @@
 		const front = document.getElementById('front');
 		const back = document.getElementById('back');
 		const bar = document.getElementById('user-answer-bar');
+		const inst = document.getElementById('show-instruction-button');
+		const expl = document.getElementById('show-explanation-button');
 		// if user is editing card, don't trigger callbacks
-		if (activeElement === front || activeElement === back) 
+		if (activeElement === front || activeElement === back || activeElement === inst 
+			|| activeElement === expl || showExplanation) {
+			// console.log(currCard.card.explanation)
 			return;
+
+		}
 
 		// go back or forward through the buffer given user responses
 		if (e.key == "<TODO")
@@ -257,19 +286,22 @@
 			undoGetLastCard(); 
 		
 		// session starts or back is revealed if user presses enter
-		if (e.key == "Enter" && activeElement != bar) {
+		if (e.key == "Enter") {
 			if (!sessionStarted) {
 				sessionStarted = true;
 				getNextCard();
-			} 
+			} else {
+				revealCard()
+				recordMessage();
+			}
 		}
 
 		if (activeElement != bar  && activeElement != front  && activeElement != back && cardIsRevealed) {
-			if (e.key == "0") 	   handleResponse(1)
-			else if (e.key == "1") handleResponse(2)
-			else if (e.key == "2") handleResponse(3)
-			else if (e.key == "3") handleResponse(4)
-			else if (e.key == "4") handleResponse(5)
+			if (e.key == "1") 	   handleResponse(1)
+			else if (e.key == "2") handleResponse(2)
+			else if (e.key == "3") handleResponse(3)
+			else if (e.key == "4") handleResponse(4)
+			else if (e.key == "5") handleResponse(5)
 		}
 
 		
@@ -285,7 +317,7 @@
 	// cards are moved on screen by moving them between arrays
 
 	let windowHeight = 0;
-	$: getStackHeight = () => windowHeight > 650 ? Math.floor(windowHeight / 30) : Math.floor(windowHeight / 50);
+	$: getStackHeight = () => windowHeight > 650 ? Math.floor(windowHeight / 30) : Math.floor(windowHeight / 55);
 
 	const MOVE_DURATION = 50;
     const [send, receive] = crossfade({                                            
@@ -305,19 +337,163 @@
     });
 	
 
-</script>
+	let showExplanation = false
+	function toggleShowExplanation() {
+		showExplanation = !showExplanation
+	}
 
+	onMount(() => {
+		setTimeout(() => {
+			sessionStarted = true
+			getNextCard()
+		}, 200);
+	});
+
+	interface Message {
+		type: "user" | "assistant",
+		content: string
+	}
+	let messages: Message[] = []
+	let resetAnswerBar = false;
+	let chatMessages: ChatCompletionRequestMessage[] = [];
+
+	let loading = false
+	function recordMessage() {
+		loading = true
+		const processedAnswer = stripHtml(userAnswer)
+		if (processedAnswer.length == 0) {
+			userAnswer = ''
+			loading = false
+			resetAnswerBar = !resetAnswerBar
+			return
+		}
+
+		messages.push({ 
+			type: "user", 
+			content: processedAnswer
+		})
+		userAnswer = ''
+		messages = messages
+		resetAnswerBar = !resetAnswerBar
+
+		getInstruction(processedAnswer)
+
+
+
+	}
+
+	let aiMessage = ""
+	function getInstruction(processedAnswer: string) {
+		// send request to chatGPT
+		// let query = "QUESTION: " + stripHtml(currCard.card.front) + stripHtml(currCard.card.back) + " RESPONSE: " + processedAnswer
+		let query = chatMessages.length == 0 
+			? stripHtml(currCard.card.front) + " I responded with this: " + processedAnswer + "The true answer is this: " + stripHtml(currCard.card.back) // look at ground truth
+			: processedAnswer
+		
+		let systemPrompt = chatMessages.length == 0
+			? "Evaluate whether my response to the card was correct to the answer or on the right track, and point out where I was wrong. Without restating or repeating the question or response, give me an explanation of the wider context to help deepen their understanding of the topic. Avoid apologizing. Be concise, and no need to be comprehensive. Respond in two sentences maximum."
+			: "You are an AI assistant teaching a student. Answer concisely and helpfully. Try not to repeat what has been said."
+
+		chatMessages = [...chatMessages, { role: 'user', content: query }]
+		const eventSource = new SSE('/api/chat', {
+			headers: { 
+				'Content-Type': 'application/json'
+			},
+			payload: JSON.stringify({ 
+				messages: chatMessages,
+				systemPrompt: systemPrompt 
+			})
+		})
+
+		eventSource.addEventListener('error', handleError);
+
+		eventSource.addEventListener('message', (e) => {
+			try {
+				// do nothing if user got next card when ChatGPT was in the middle
+				// of responding
+				if (messages.length == 0)
+					return
+					
+				if (e.data === "[DONE]") {
+					loading = false
+
+					chatMessages.push({
+						"role": 'assistant', 
+						"content": aiMessage
+					})
+
+					messages.push({
+						type: "assistant",
+						content: aiMessage
+					})
+					aiMessage = ""
+					messages = messages
+					let myDiv: any = document.getElementById("chatbox");
+					setTimeout(() => {
+						myDiv.scrollTop = myDiv.scrollHeight;
+					}, 200);
+
+					return;
+				}
+
+				const completionResponse = JSON.parse(e.data)
+				const [{ delta }] = completionResponse.choices
+				if (delta.content) {
+					aiMessage = (aiMessage ?? '') + delta.content
+				}
+				let myDiv: any = document.getElementById("chatbox");
+  				myDiv.scrollTop = myDiv.scrollHeight;
+
+			} catch (err) {
+				handleError(err)
+				loading = false
+			}
+		});
+		eventSource.stream()
+	}
+
+	function handleError<T>(err: T) {
+		console.error(err)
+		chatMessages.push({
+			"role": 'assistant', 
+			"content": "ERROR: NO SIGNAL"
+		})
+
+		messages.push({
+			type: "assistant",
+			content: "ERROR: NO SIGNAL"
+		})
+		messages = messages
+		loading = false
+
+
+	}
+
+	function stripHtml(content: string): string {
+		return content.replace(/<\/?[^>]+(>|$)/g, '')
+	}
+
+	async function deleteCard() {
+
+		stacks.studying.pop()!;
+		await invoke("delete_card", {"cardId": currCard.card.id})
+
+		getNextCard()
+		stacks = stacks
+	}
+
+</script>
 
 
 <!-- Listen for keyboard events -->
 <svelte:window on:keydown={onKeyDown} bind:innerHeight={windowHeight}/>
 <!-- Home button -->
 <div class={isDarkMode ? "dark" : ""}>
-<div class="bg-offwhite dark:bg-offblack h-screen text-blacktext ">
+<div class="bg-offwhite dark:bg-offblack h-screen text-blacktext">
 	<div class="{windowHeight > 450 ? "h-5" : "h-2"}"></div>
 
 	<!-- bar at top -->
-		<div class="ml-8 h-16 w-6 ">
+		<div class="ml-8 h-18 w-6 ">
 			<a href="/" class="ring-columbia focus:outline-none focus:ring duration-75">
 				<div class="fled justify-evenly w-6 ">
 					<svg fill="highlight" class="flex-none h-6 w-6 cursor-pointer ring-columbia focus:outline-none focus:ring duration-75 rounded-md" 
@@ -329,35 +505,54 @@
 		</div>
 
 
-		<div class=" {windowHeight > 450 ? "space-y-32" : "space-y-8"}">
+		<div class=" {windowHeight > 450 ? "space-y-8" : "space-y-4"}">
 
 		{#if !sessionStarted && stacks}
 			<!-- <h3 class="text-center font-bold text-columbia text-4xl">Welcome, </h3> -->
-			<h3 class="text-center font-mono font-bold text-columbia text-xl">Hit ENTER to begin</h3>
-			<h3 class="text-center font-serif font-semibold text-columbia text-md">With {stacks.new.length} new and {stacks.review.length} review cards, today's practice will take {(stacks.new.length * 12 + stacks.review.length * 5) / 60} minutes.</h3>
+			<h3 class="text-center font-mono font-bold text-columbia text-xl">Godspeed!</h3>
+			<!-- <h3 class="text-center font-serif font-semibold text-columbia text-md">With {stacks.new.length} new and {stacks.review.length} review cards, today's practice will take {(stacks.new.length * 12 + stacks.review.length * 5) / 60} minutes.</h3> -->
 
 
 		{:else if sessionStarted} <!-- show card field if session has started, but not finished -->
 			{#if !sessionFinished}
 
 				<!-- {#key card_drawn}  -->
-				<div class='w-1/2 mx-auto'>
+				<div class='mx-auto {messages.length == 0 || !cardIsRevealed ? "mt-0" : "-mt-0" } '>
 					{#each stacks.studying as id (id)}
 
-						<div class="card-container"
+						<div class="card-container z-50 w-1/2 mx-auto"
 							in:receive="{{key: id}}"
 							out:send="{{key: id}}"
 							animate:flip="{{duration: 50}}">
 
-								<div class="{!isDarkMode ? "card" : ""} dark:border-x dark:border-y dark:border-opacity-50 border-columbia border-opacity-50 flex flex-col h-full rounded-lg text-blacktext dark:bg-slate-700 dark:text-offwhite">
+								<div class="{!isDarkMode ? "card" : ""} w-full dark:border-x dark:border-y dark:border-opacity-50 border-columbia border-opacity-50 flex flex-col h-full rounded-lg text-blacktext dark:bg-slate-700 dark:text-offwhite">
 			
-									<div class="opacity-50 font-serif ml-4">{currCard.deck_name}</div>
+									<div class="flex-row flex justify-between">
+										<div class="opacity-40 font-serif ml-4 mt-1">
+											<Hint placement="top" text="Deck Name">
+												{currCard.deck_name}
+											</Hint>
+										</div>
+
+										<div class="mr-2 mt-2 opacity-70">
+											<Hint placement="top" text="Delete Card">
+												<span class="cursor-pointer hover:opacity-100 pt-3 dark:opacity-30 text-md text-columbia" on:click={() => deleteCard()} on:keydown={() => deleteCard()}> 
+													<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+														<path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+													</svg>
+												</span>
+											</Hint>
+										</div>
+									</div>
+
+
+
 
 									<!-- front field -->
-									<div on:focusout={() => updateCard(currCard.card)} class="w-[520px] lg:w-[700px] mx-8 my-6 text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
-										<TextfieldEditor bind:content={currCard.card.front}/>
+									<div on:focusout={() => updateCard(currCard.card)} class="w-[520px] lg:w-[700px] mx-8 {messages.length == 0 ? "my-4 mt-4" : "my-1"} text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
+										<TextfieldEditor bind:content={currCard.card.front} is_reviewfront={true} />
 									</div>          
-
+									
 									<!-- rule separating front and back fields -->
 									<div class="border-t border-1 border-opacity-50 border-columbia" />   
 
@@ -365,74 +560,138 @@
 									{#if !cardIsRevealed}
 										<div class="mx-8 my-6 text-inherit"></div>          
 									{:else}
-										<div on:focusout={() => updateCard(currCard.card)} class="h-1/2 mx-8 mt-6 mb-8 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
-											<TextfieldEditor bind:content={currCard.card.back}/>
+										<div on:focusout={() => updateCard(currCard.card)} class="h-1/2 mx-8 mt-4 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
+											<TextfieldEditor bind:content={currCard.card.back} is_reviewback={true} />
 										</div>          
-											
+									{/if}
+										
 
+									{#if cardIsRevealed}
 										<!-- answer bar -->
-										<div class="flex items-center justify-center top-[450px]">     
-											{#if isAnki}
-												<button 
-													on:click={() => handleResponse(1)}
-													class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-													Again
-												</button>
-											{/if}
+										<div class="grid {isAnki ? "grid-cols-5" : "grid-cols-3"} text-xs font-serif font-light opacity-100 mb-1 z-50">
+											<div class="col-span-1 text-center flex justify-center items-center">
+												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+												</svg>
+												  
+											</div>
+											<div class="{isAnki ? "col-span-3" : "col-span-1"}"></div>
+											<div class="col-span-1 text-center flex justify-center items-center">
+												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
+													<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+												</svg>
+											</div>
+										</div>
+
+										<div class="flex font-mono items-center justify-center top-[450px]">     
+													
+											<button 
+												on:click={() => handleResponse(1)}
+												class="h-5 relative {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
+												1
+											</button>
+											
 										
 											<button 
 												on:click={() => handleResponse(2)}
-												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia {isAnki ? "" : "rounded-bl-lg" } cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-												Hard
+												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia {isAnki ? "" : "rounded-bl-none" } cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
+												2
 											</button>
 
 											<button
 												on:click={() => handleResponse(3)}
 												on:keypress={() => handleResponse(3)}
-												autofocus
 												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-40 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-x border-columbia cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-												Okay
+												3 
 											</button>      
-
-											<button	
-												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-r border-l border-columbia {isAnki ? "" : "rounded-br-lg" } cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-0"
-												on:click={() => handleResponse(4)} >
-												Good
-											</button>    
+											<!-- no more autofocus on Okay -->
 
 											{#if isAnki}
+												<button	
+													class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-r border-l border-columbia {isAnki ? "" : "rounded-br-lg" } cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white  ring-columbia focus:outline-none focus:ring duration-0"
+													on:click={() => handleResponse(4)} >
+													4
+												</button>    
+
 												<button 
 													on:click={() => handleResponse(5)}
 													class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia rounded-br-lg cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
-													Easy
+													5
 												</button>
 											{/if}
-										</div>       
-									{/if}
-
-								</div>  
-
-								<!-- answer bar -->
-								<form class="w-full outline-none z-50">
-									<div class="w-full flex flex-wrap items-stretch relative mb-3">
-										<div class = "w-2/3 h-full mx-auto dark:text-whitetext rounded-md border-1 pl-3 pt-1 pb-2 pr-2 outline-none cursor-text">
-											<div id="user-answer-bar" class="border h-full rounded-lg ring-columbia focus:outline-none focus:ring-2 duration-75">
-												<TextfieldEditor bind:content={userAnswer} autofocus={true} is_answerbar={true}/>
-											</div>
 										</div>
 
-										<span class="right-1/4 absolute inset-y-0 flex items-center -mr-10 lg:-mr-14">
-											<Hint placement="bottom" text="Reveal card">
-												<button on:click={revealCard} class="focus:outline-none focus:ring-2 ring-columbia p-1 rounded-sm mr-2 ">
-													<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 dark:invert ">
-														<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-													</svg>
-												</button>
-											</Hint>
+									{/if}
+								</div>
+
+
+								<!-- answer bar -->
+								<form class="w-full outline-none">
+									<div class="w-full flex flex-wrap items-stretch relative mb-3">
+										<div class = "w-5/6 h-full mx-auto dark:text-whitetext rounded-md border-1 pl-3 -pr-16 pt-1 pb-2 outline-none cursor-text">
+											{#if !showExplanation}
+												<div id="user-answer-bar" class=" border h-full overflow-scroll rounded-lg mr-2 focus:outline-none duration-75">
+													<!-- history -->
+													<div id="chatbox" class="max-h-80 overflow-y-scroll scroll-my-12 flex flex-col z-50">
+														{#each messages as message, index}
+															{#if loading && index % 2 == 1 && index == messages.length - 1}
+																<!-- <div class="{index == messages.length - 1 ?? "mb-1"} inline-block text-sm px-4 rounded-2xl bg-platinum dark:bg-slate-700 p-2 m-2 mr-8 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100">
+																	{message.content}
+																</div> -->
+																<div class="{index == messages.length - 1 ?? "mb-1"} ring-columbia font-light bg-platinum dark:bg-slate-700 inline-block px-3 rounded-md p-2 m-2 mr-8 cursor-text text-light transition-opacity duration-100 text-md">
+																	{message.content}	
+																</div>
+															{:else}
+																<ChatTextfieldEditor index={index} content={message.content} />
+															{/if}
+														{/each}
+														{#if aiMessage.length > 0}
+															<div class="font-light inline-block text-sm px-4 rounded-md bg-platinum dark:bg-slate-700 p-2 m-2 mr-8 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100">
+																{aiMessage}
+															</div>
+														{/if}
+													</div>
+													<div>
+														{#key resetAnswerBar}
+															{#if !loading}
+																<!-- {#key loading} -->
+																<div class="pl-2">
+																	<TextfieldEditor bind:content={userAnswer} autofocus={true} is_answerbar={true} is_useranswer={true}/>
+																</div>
+																<!-- {/key} -->
+															{/if}
+														{/key}
+													</div>
+												</div>
+											{:else}
+												<div class="bg-platinum dark:bg-slate-700 border h-full rounded-lg mr-2 ring-columbia focus:outline-none focus:ring-2 duration-75">
+													<TextfieldEditor bind:content={currCard.card.explanation} is_useranswer={true}/>
+												</div>
+											{/if}
+										</div>
+
+										<span class="right-1/4 absolute inset-y-0 flex items-end mb-3 ml-1 my-2 -mr-24 lg:-mr-32 -pr-1 lg:pr-1 z-50">
+											{#if !showExplanation}
+												<Hint placement="bottom" text="Show Explanation">
+													<button on:click={toggleShowExplanation} id="show-explanation-button" class="focus:outline-none focus:ring-2 ring-columbia rounded-sm p-1 mr-3 ">
+														<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 dark:invert">
+															<path stroke-linecap="round" stroke-linejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+														</svg>
+													</button>
+												</Hint>
+											{:else}
+												<Hint placement="bottom" text="Type Answer">
+													<button on:click={toggleShowExplanation} autofocus id="show-instruction-button" class="focus:outline-none focus:ring-2 ring-columbia p-1 rounded-sm mr-3 ">
+														<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 dark:invert">
+															<path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
+														</svg>
+													</button>
+												</Hint>
+											{/if}
 										</span>
 									</div>
 								</form>
-							</div>
+						</div>
 					{/each}
 				</div>
 			{:else}
@@ -442,8 +701,8 @@
 
 
 		<!-- animated stacks -->
-	{#if stacks && (windowHeight > 600 && !cardIsRevealed) || (windowHeight > 775 && cardIsRevealed)}
-		<div class="fixed left-1/2 -translate-x-1/2 h-1/3 px-2 w-2/3 lg:w-1/2 bottom-10 flex flex-row gap-16">
+	{#if stacks && !showExplanation && ((windowHeight > 600 && !cardIsRevealed) || (windowHeight > 775 && cardIsRevealed)) && messages.length == 0}
+		<div class="fixed left-1/2  -translate-x-1/2 h-1/4 px-2 w-2/3 lg:w-1/2 bottom-6 flex flex-row gap-16">
 			<!-- whitespace -->
 			<div class="border-b-2 border-columbia-dark dark:border-offwhite dark:opacity-50 w-full absolute bottom-0 left-1/2 -translate-x-1/2"></div>
 				<!-- done -->
@@ -451,7 +710,7 @@
 					<div class="flex flex-col-reverse w-full space-y-0">
 
 						{#if stacks.done.length > getStackHeight()}
-							<Hint placement="bottom" text="{stacks.done.length - getStackHeight()} advanced {stacks.done.length == 1 ? "card" : "cards"} hidden">
+							<Hint placement="bottom" text="{stacks.done.length - getStackHeight()} advanced {stacks.done.length - getStackHeight() == 1 ? "card" : "cards"} hidden">
 								<div class="w-full flex flex-col-reverse">
 									
 										<svg class="h-5 fill-offblack dark:fill-offwhite"
@@ -489,7 +748,7 @@
 					<div class="flex flex-col-reverse w-full space-y-0">
 
 						{#if stacks.new.length > getStackHeight()}
-							<Hint placement="bottom" text="{stacks.new.length - getStackHeight()} new {stacks.new.length == 1 ? "card" : "cards"} hidden">
+							<Hint placement="bottom" text="{stacks.new.length - getStackHeight()} new {stacks.new.length - getStackHeight() == 1 ? "card" : "cards"} hidden">
 								<div class="w-full flex flex-col-reverse">
 									
 										<svg class="h-5 fill-offblack dark:fill-offwhite"
@@ -528,7 +787,7 @@
 					<div class="flex flex-col-reverse w-full space-y-0">
 
 						{#if stacks.review.length > getStackHeight()}
-							<Hint placement="bottom" text="{stacks.review.length - getStackHeight()} review {stacks.review.length == 1 ? "card" : "cards"} hidden">
+							<Hint placement="bottom" text="{stacks.review.length - getStackHeight()} review {stacks.review.length - getStackHeight() == 1 ? "card" : "cards"} hidden">
 								<div class="w-full flex flex-col-reverse">
 									
 										<svg class="h-5 fill-offblack dark:fill-offwhite"
@@ -563,6 +822,7 @@
 			</div>
 		{/if}
 	</div>
+	
 
 		<!-- debugging stack height -->
 			<!-- <div class="absolute right-5 bottom-0 dark:invert">

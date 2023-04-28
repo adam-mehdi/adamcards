@@ -16,8 +16,8 @@ pub fn pop_review_anki_card(conn: &mut SqliteConnection, deck_id: i32) -> Review
     let popped_card = cards::table
         .filter(cards::next_practice.le(today).and(cards::deck_id.eq(deck_id))) // filter cards whose next_practice is in the past
         .order(cards::queue_score.asc())
-        .select((cards::id, cards::front, cards::back))
-        .first::<(i32, String, String)>(conn)
+        .select((cards::id, cards::front, cards::back, cards::explanation))
+        .first::<(i32, String, String, Option<String>)>(conn)
         .expect("Error choosing card to review");
 
     let deck_name = entries::table
@@ -26,13 +26,15 @@ pub fn pop_review_anki_card(conn: &mut SqliteConnection, deck_id: i32) -> Review
         .get_result::<String>(conn)
         .expect("failed to get deck name");
 
+
     ReviewCard { 
         stack_before: String::from("review"), 
         deck_name, 
         card: Card { 
             id: popped_card.0,
             front: popped_card.1,
-            back: popped_card.2
+            back: popped_card.2,
+            explanation: popped_card.3
         }
     }
 }
@@ -107,6 +109,7 @@ pub fn update_card_anki(conn: &mut SqliteConnection, card: &ReviewCard, score: i
         .set((
             cards::front.eq(&card.card.front), 
             cards::back.eq(&card.card.back), 
+            cards::explanation.eq(&card.card.explanation),
             cards::queue_score.eq(get_queue_score()),
             cards::next_practice.eq(next_practice.date_naive()),
             cards::easiness.eq(new_stats.ease_factor),
@@ -130,6 +133,7 @@ pub fn update_card_anki(conn: &mut SqliteConnection, card: &ReviewCard, score: i
         let prac_new = (&card.stack_before == "new") as i32;
         let prac_review = (&card.stack_before == "review") as i32;
 
+        // SEE IF QUOTAS ARE UPDATED AFTER THIS
         update(ankiquotas::table)
             .filter(ankiquotas::date_practiced.eq(today).and(ankiquotas::deck_id.eq(deck_id)))
             .set((
