@@ -395,9 +395,16 @@
 	}
 
 	let aiMessage = ""
-	function getInstruction(processedAnswer: string) {
+	async function getInstruction(processedAnswer: string) {
 		// send request to chatGPT
 		// let query = "QUESTION: " + stripHtml(currCard.card.front) + stripHtml(currCard.card.back) + " RESPONSE: " + processedAnswer
+
+		const apiKey = await invoke("get_api_key")
+		if (!apiKey) {
+			aiMessage = "INVALID API KEY: RESUBMIT AND TRY AGAIN     " + aiMessage
+			return
+		}
+
 		let query = chatMessages.length == 0 && !cardIsRevealed
 			? `Now AI Instructor will evaluate my guess in at most two sentences. Restrictions: (1) explain if correct or incorrect, rarely saying incorrect (2) address incorrect points by explaining how things actually are (3) a guess is correct if it says the same thing as the answer (4) don't congratulate (5) avoid restating the answer. Question: ${stripHtml(currCard.card.front)} True Answer: ${stripHtml(currCard.card.back)} My guess: ${stripHtml(userAnswer)}  AI Instructor evaluation:`
 			: "Explain new concepts on the same topic based on my confusion: " + processedAnswer
@@ -414,8 +421,8 @@
 			payload: JSON.stringify({ 
 				messages: chatMessages,
 				systemPrompt: systemPrompt,
-				maxTokens: 1000
-
+				maxTokens: 1000,
+				apiKey
 			})
 		})
 
@@ -444,7 +451,11 @@
 					messages = messages
 					let myDiv: any = document.getElementById("chatbox");
 					setTimeout(() => {
-						myDiv.scrollTop = myDiv.scrollHeight;
+						const isAtBottom = myDiv.scrollHeight - myDiv.scrollTop === myDiv.clientHeight;
+
+						if (isAtBottom) {
+							myDiv.scrollTop = myDiv.scrollHeight;
+						}
 					}, 200);
 
 					return;

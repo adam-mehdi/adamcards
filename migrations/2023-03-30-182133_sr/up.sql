@@ -63,7 +63,7 @@ CREATE TABLE userconfig (
     config_id      INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,                           
     is_dark_mode   BOOLEAN NOT NULL,                                            
     is_text_field  BOOLEAN NOT NULL,
-    api_key VARCHAR(500)
+    api_key        VARCHAR(500)
 );                                                                              
                                                                                                     
 CREATE TABLE quotas (                                                           

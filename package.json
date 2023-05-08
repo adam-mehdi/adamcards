@@ -43,5 +43,10 @@
 		"svelte-hint": "^1.1.0",
 		"tiptap": "^1.32.2",
 		"vite-plugin-wasm": "^3.2.2"
-	}
+	},
+	"files": [
+	  "public/**/*",
+	  "src/**/*",
+	  "src/routes/api/chat/**/*"
+	]
 }

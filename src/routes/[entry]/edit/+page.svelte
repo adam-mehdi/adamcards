@@ -12,6 +12,7 @@
   	import type { ChatCompletionRequestMessage } from 'openai';
 	import { SSE } from 'sse.js';
 	import { textPasteRule } from '@tiptap/core';
+	import { processChatRequest } from '$lib/chatProcessor';
 
 	
 
@@ -402,7 +403,12 @@
 		if (!explanationMode)
 			return
 
-		// TODO: card.card.explanation
+		const apiKey = await invoke("get_api_key")
+		if (!apiKey) {
+			card.card.explanation = "INVALID API KEY: RESUBMIT AND TRY AGAIN"
+			return
+		}
+
 		card.loading = true;
 		// process front and back
 		let query = `AI Explainer will explain the fact insightfully and creatively. Restriction: avoid restating the answer Question: ${stripHtml(card.card.front)} Answer: ${stripHtml(card.card.back)} AI Explainer explanation:`
@@ -410,16 +416,18 @@
 		chatMessages = [{ role: 'user', content: query }]
 
 		const systemPrompt = "AI Explainer is designed to be able to justify a fact for a student's understanding. All its explanations are TWO sentences. For a given question and answer,  it is the best at offering brief yet insightful explanations. It limit its response to two or three lines, avoiding repetition, apologies, or restating. Be original, informative, and true to the subject matter."
-		const eventSource = new SSE('/api/chat', {
+		const request = {
 			headers: { 
 				'Content-Type': 'application/json'
 			},
 			payload: JSON.stringify({ 
 				messages: chatMessages,  
 				systemPrompt: systemPrompt,
-				maxTokens: 1000
+				maxTokens: 1000,
+				apiKey
 			})
-		})
+		}
+		const eventSource = processChatRequest(request)
 
 
 		eventSource.addEventListener('error', handleError);
@@ -464,9 +472,11 @@
 		panel.textfield = ''
 		loadingSuggestions = true;
 
-		
-		
-	
+		const apiKey = await invoke("get_api_key")
+		if (!apiKey) {
+			panel.textfield = "INVALID API KEY: RESUBMIT AND TRY AGAIN     " + panel.textfield
+			return
+		}
 
 		suggestionMessages = [...suggestionMessages, { role: 'user', content: text }]
 
@@ -478,7 +488,8 @@
 			payload: JSON.stringify({ 
 				messages: suggestionMessages,  
 				systemPrompt: systemPrompt,
-				maxTokens: 2000
+				maxTokens: 2000,
+				apiKey
 			})
 		})
 
@@ -531,7 +542,7 @@
 </script>
 
 	
-<div class="{isDarkMode ? "dark" : ""}">
+<div class="{isDarkMode ? "dark" : ""} bg-black h-full m-0 p-0">
 	<div class="min-h-screen h-full bg-offwhite dark:bg-offblack">
 		<div class="mb-5">
 		
@@ -910,6 +921,7 @@
 	.scroll_pad {
 		height: calc(100vh + 200px);
 	}
+
 
 
 </style> 

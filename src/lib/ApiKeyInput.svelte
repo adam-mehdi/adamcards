@@ -1,31 +1,80 @@
 <script lang="ts">
+  import { invoke } from '@tauri-apps/api/tauri';
+
     // import { writable } from "svelte/store";
 	import Hint from 'svelte-hint';
   
     let apiKey = "";
     export let apiKeyPresent: boolean;
     export let submittedApiKey = false;
+    let invalidApiKeySubmitted = false
+
     
-    function saveApiKey() {
-        fetch("/api/save-api-key", {
-            method: "POST",
-            headers: {
-            "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ "apiKey": apiKey }),
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-            console.log("API key saved successfully");
+    async function saveApiKey() {
+
+        // first check if apiKey is valid
+        if (await testOpenAiApiKey(apiKey)) {
+
+            // now save apiKey
+            invoke('write_api_key', { apiKey });        
             apiKeyPresent = true;
             submittedApiKey = true;
 
-            } else {
-            console.error("Failed to save API key");
-            }
-        });
+        } else {
+            // apiKey not valid
+            invalidApiKeySubmitted = true;
+            
+        }
+
+
     }
+
+
+    async function testOpenAiApiKey(apiKey: string): Promise<boolean> {
+        const apiUrl = 'https://api.openai.com/v1/chat/completions';
+
+        const chatRequestOpts = {
+            model: 'gpt-3.5-turbo',
+            messages: [
+                {
+                    role: 'system',
+                    content: 'You are a helpful assistant.',
+                },
+                {
+                    role: 'user',
+                    content: 'Who won the world series in 2020?',
+                },
+            ],
+            max_tokens: 5,
+        };
+
+        const requestOptions: RequestInit = {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(chatRequestOpts),
+        };
+
+        try {
+            const response = await fetch(apiUrl, requestOptions);
+
+            if (response.ok) {
+                console.log('API key is valid');
+                return true;
+            } else {
+                console.log('API key is invalid or there was an issue with the request');
+                // const errorDetails = await response.json();
+                // console.log('Error details:', errorDetails);
+                return false;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            return false;
+        }
+    }
+
   </script>
   
   <div class="w-full py-2 px-6 mt-5 bg-offwhite dark:bg-offblack dark:text-whitetext border p-4 rounded-lg">
@@ -36,8 +85,11 @@
             </svg>
         </Hint>
         
-        {#if !apiKeyPresent}
+
+        {#if !apiKeyPresent && !invalidApiKeySubmitted}
             <h2 class="mb-2 font-mono text-sm">Enter your OpenAI API Key</h2>
+        {:else if invalidApiKeySubmitted}
+            <h2 class="mb-2 font-mono text-sm">Invalid API Key. Resubmit new key</h2>
         {:else}
             <h2 class="mb-2 font-mono text-sm">API Key found. You're all ready to go</h2>
         {/if}

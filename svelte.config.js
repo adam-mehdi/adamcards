@@ -28,7 +28,7 @@ const config = {
 				"/[entry]/review/",
 			]
 		}
-	}
+	},
 };
 
 export default config;
