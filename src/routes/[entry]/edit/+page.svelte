@@ -12,7 +12,7 @@
   	import type { ChatCompletionRequestMessage } from 'openai';
 	import { SSE } from 'sse.js';
 	import { textPasteRule } from '@tiptap/core';
-	import { processChatRequest } from '$lib/chatProcessor';
+	// import { processChatRequest } from '$lib/chatProcessor';
 
 	
 
@@ -416,18 +416,18 @@
 		chatMessages = [{ role: 'user', content: query }]
 
 		const systemPrompt = "AI Explainer is designed to be able to justify a fact for a student's understanding. All its explanations are TWO sentences. For a given question and answer,  it is the best at offering brief yet insightful explanations. It limit its response to two or three lines, avoiding repetition, apologies, or restating. Be original, informative, and true to the subject matter."
-		const request = {
+
+		const eventSource = new SSE('/api/chat', {
 			headers: { 
 				'Content-Type': 'application/json'
 			},
 			payload: JSON.stringify({ 
-				messages: chatMessages,  
+				messages: chatMessages,
 				systemPrompt: systemPrompt,
 				maxTokens: 1000,
 				apiKey
 			})
-		}
-		const eventSource = processChatRequest(request)
+		})
 
 
 		eventSource.addEventListener('error', handleError);
