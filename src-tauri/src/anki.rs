@@ -5,7 +5,17 @@ use crate::models::Card;
 
 use diesel::update;
 use diesel::prelude::*;
-// use diesel::serialize::ToSql;
+
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct NextIntervals {
+    pub r1: i32,
+    pub r2: i32,
+    pub r3: i32,
+    pub r4: i32,
+    pub r5: i32,
+}
 
 
 pub fn pop_review_anki_card(conn: &mut SqliteConnection, deck_id: i32) -> ReviewCard {
@@ -41,9 +51,9 @@ pub fn pop_review_anki_card(conn: &mut SqliteConnection, deck_id: i32) -> Review
 
 
 pub struct SmResponse {
-    interval: i32, // The interval between repetitions (in days).
-    repetitions: i32,// The number of times a user has seen the flashcard.
-    ease_factor: f32,// The easiness factor for the flashcard.
+    pub interval: i32, // The interval between repetitions (in days).
+    pub repetitions: i32,// The number of times a user has seen the flashcard.
+    pub ease_factor: f32,// The easiness factor for the flashcard.
 }
 
 // quality is score, and it ranges 1-5. A score of 3 or more is a success
@@ -54,11 +64,15 @@ pub fn calculate_sm(
     previous_interval: i32,
     previous_ease_factor: f32,
 ) -> SmResponse {
-    let (interval, repetitions, ease_factor) = if quality >= 3 {
+    let (interval, repetitions, ease_factor) = if quality >= 2 {
         let interval = match repetitions {
-            0 => 1,
-            1 => 6,
-            _ => (previous_interval as f32 * previous_ease_factor).round() as i32,
+            0 => quality - 1,
+            1 =>  previous_interval + quality * 2 - 4,
+            _ => if quality == 2 { previous_interval } else { 
+                std::cmp::max(
+                    (previous_interval as f32 * previous_ease_factor).round() as i32, 
+                    quality * 2 - 4) // prevents drop to zero after quality of 1
+                },
         };
 
         let repetitions = repetitions + 1;
@@ -66,13 +80,10 @@ pub fn calculate_sm(
             previous_ease_factor + (0.1 - (5 - quality) as f32 * (0.08 + (5 - quality) as f32 * 0.02));
 
         (interval, repetitions, ease_factor)
-    } else if quality == 1 {
+    } else {
         // repeat if pressing again
         (0, repetitions, previous_ease_factor)
-    } else {
-        (1, repetitions, previous_ease_factor)
     };
-
     let ease_factor = if ease_factor < 1.4 { 1.4 } else { ease_factor };
 
     SmResponse {
@@ -81,7 +92,6 @@ pub fn calculate_sm(
         ease_factor,
     }
 }
-
 
 
 pub fn update_card_anki(conn: &mut SqliteConnection, card: &ReviewCard, score: i32) -> String {
@@ -153,3 +163,6 @@ pub fn update_card_anki(conn: &mut SqliteConnection, card: &ReviewCard, score: i
     stack_after
 
 }
+
+
+

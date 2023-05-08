@@ -595,3 +595,33 @@ pub fn get_last_card(state: State<DatabaseState>, review_state: State<ReviewSess
 // pub fn undo_get_last_card(state: State<DatabaseState>) -> Option<CardResults> { None }
 
 
+
+use crate::anki::{NextIntervals, calculate_sm};
+
+#[tauri::command] 
+pub fn get_next_intervals(state: State<DatabaseState>, card_id: i32) -> NextIntervals {
+    let conn= &mut *state.conn.lock().unwrap();
+
+    use crate::schema::cards;
+    let (ease_factor, interval, repetitions) = cards::table
+        .filter(cards::id.eq(card_id))
+        .select((cards::easiness, cards::interval, cards::repetitions))
+        .get_result::<(Option<f32>, Option<i32>, Option<i32>)>(conn)
+        .expect("failed to get current card stats");
+
+    let mut nis = Vec::new();
+
+    for i in 1..=5 {
+        let new_stats = calculate_sm( 
+            i,
+            repetitions.unwrap(),
+            interval.unwrap(),
+            ease_factor.unwrap()
+        );
+        nis.push(new_stats.interval);
+    } 
+
+    NextIntervals { r1: nis[0], r2: nis[1], r3: nis[2], r4: nis[3], r5: nis[4] }
+
+
+}

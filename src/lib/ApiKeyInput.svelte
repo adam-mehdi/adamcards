@@ -39,7 +39,7 @@
         {#if !apiKeyPresent}
             <h2 class="mb-2 font-mono text-sm">Enter your OpenAI API Key</h2>
         {:else}
-            <h2 class="mb-2 font-mono text-sm">API Key found. Optionally enter a new one</h2>
+            <h2 class="mb-2 font-mono text-sm">API Key found. You're all ready to go</h2>
         {/if}
 
     </div>
@@ -53,7 +53,7 @@
       on:click="{saveApiKey}"
       class="h-8 text-sm mb-1 w-full hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75"
     >
-      Save API Key
+      {apiKeyPresent ? "Reset" : "Save"} API Key
     </button>
   </div>
   

@@ -26,7 +26,9 @@ use crate::home::{
   get_deadline_date,
   entered_past_deadline,
   reset_deadline,
-  toggle_is_expanded
+  toggle_is_expanded,
+  write_api_key,
+  get_api_key
 };
 
 mod startup;
@@ -57,7 +59,8 @@ use review::{
   get_next_card,
   record_response,
   get_last_card,
-  print_cards
+  print_cards,
+  get_next_intervals
 };
 
 
@@ -100,7 +103,7 @@ fn main() {
     })
     // define what backend functions are callable from the frontend
     .invoke_handler(tauri::generate_handler![
-      // home_db
+      // home
       read_folder_system,
       create_entry,
       delete_entry,
@@ -113,24 +116,29 @@ fn main() {
       entered_past_deadline,
       reset_deadline,
       toggle_is_expanded,
+      write_api_key,
+      get_api_key,
 
       print_cards,
 
-      // edit_db
+      // edit
       read_deadline_contents,
       write_text_field,
       create_cards,
       update_card,
       delete_card,
 
-      // review_db
+      // review
       init_review_session,
       get_next_card,
       record_response,
       get_last_card,
 
-      // utils_db
+      // utils
       get_is_anki_frontend,
+
+      //anki
+      get_next_intervals
 
       ])
     // run application (boilerplate)

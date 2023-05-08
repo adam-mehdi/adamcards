@@ -101,9 +101,8 @@
 	let submittedApiKey = false;
 
 	async function checkApiKey() {
-		const response = await fetch("/api/check-api-key");
-		const data = await response.json();
-		apiKeyPresent = data.success;
+		const response: null | string = await invoke("get_api_key")
+		apiKeyPresent = response !== null
 		showApiKeyInput = !apiKeyPresent
 		resetSubmittedApiKey()
 

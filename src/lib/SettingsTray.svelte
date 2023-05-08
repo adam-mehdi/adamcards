@@ -34,6 +34,7 @@
 
 	// specialty trays
 	let newName: string = "";
+	let renameName: string = entryData.entry_name;
 	let studyIntensity = "";
 
 	let createFolderTrayOpen = false;
@@ -130,12 +131,12 @@
 		let parentId = getParentId();
 		if (!parentId) return;
 
-		newName = newName.slice(0, 29);
-		entered_dup_name = await getIsDupName(parentId, newName);
+		renameName = renameName.slice(0, 29);
+		entered_dup_name = await getIsDupName(parentId, renameName);
 		if (entered_dup_name)
 			return;
 
-		await invoke("rename_entry", { "entryId": entryData.entry_id, newName });
+		await invoke("rename_entry", { "entryId": entryData.entry_id, renameName });
 
 		handleCancel();
 		reloadStore.update((state) => !state)
@@ -341,7 +342,7 @@
 	  
 			<div class="float-right z-40">
 				<Hint placement="top" text="{entryData.entry_quota.review_left} review">
-					<div class="h-6 w-7 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.review_left}</div>
+					<div class="h-6 w-7 -mr-1 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.review_left}</div>
 				</Hint>
 			</div>
 
@@ -354,7 +355,7 @@
 
 			<div class="float-right">
 				<Hint placement="top" text="{entryData.entry_quota.num_progressed} practiced">
-					<div class="h-6 w-7 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.num_progressed} </div>
+					<div class="h-6 w-7 ml-2 text-blacktext dark:text-columbia font-serif">{entryData.entry_quota.num_progressed} </div>
 				</Hint>
 			</div>
 
@@ -364,19 +365,19 @@
 	  
 			<div class="float-right z-40 ">
 				<Hint placement="top" text="0 review">
-					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">0</div>
+					<div class="h-6 w-7 -mr-1 text-blacktext dark:text-columbia font-serif">0</div>
 				</Hint>
 			</div>
 
 			<div class="float-right z-30">
 				<Hint placement="top" text="0 new">
-					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">0</div>
+					<div class="h-6 w-7 text-blacktext dark:text-columbia font-serif">0</div>
 				</Hint>
 			</div>
 
 			<div class="float-right">
 				<Hint placement="top" text="0 practiced">
-					<div class="h-6 w-5 text-blacktext dark:text-columbia font-serif">0</div>
+					<div class="h-6 w-7 ml-2 text-blacktext dark:text-columbia font-serif">0</div>
 				</Hint>
 			</div>
 
@@ -498,7 +499,7 @@
 		
 					<!-- Rename -->
 					{:else if !moveTrayOpen && renameTrayOpen && !resetDeadlineTrayOpen} 
-						<input type="text" use:focus placeholder="Enter Name" bind:value={newName} class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring duration-75"/>
+						<input type="text" use:focus placeholder="Enter Name" bind:value={renameName} class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring duration-75"/>
 					<!-- Move -->
 					{:else if !resetDeadlineTrayOpen}
 						<!-- <label for="folders" class="w-32 -mb-8">Choose Location:</label> -->

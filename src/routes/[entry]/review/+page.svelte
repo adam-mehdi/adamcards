@@ -56,6 +56,14 @@
 		studying: number[]
 	}
 
+	interface NextIntervals {
+		r1: number;
+		r2: number;
+		r3: number;
+		r4: number;
+		r5: number;
+	}
+
 	
 
 	/**
@@ -71,6 +79,7 @@
 	let currCard: ReviewCard;
 	const deadlineId: number = parseInt($page.params.entry);
 	let isAnki: boolean;
+	let nextIntervals: NextIntervals = { r1: 0, r2: 0, r3: 0, r4: 0, r5: 0 };
 
 	
 
@@ -93,11 +102,12 @@
 
 	async function getNextCard() {
 		cardIsRevealed = false;
+		loading = false
+		aiMessage = ""
 		messages = []
 		chatMessages = []
 
 		let card: ReviewCard | null = await invoke("get_next_card", {})
-		console.log(card)
 		
 		// if no card was returned, session is finished
 		if (!card) {
@@ -123,6 +133,8 @@
 
 		stacks = stacks;
 		// console.log(await invoke("print_cards", {deadlineId}))
+
+		nextIntervals = await invoke("get_next_intervals", { "cardId": currCard.card.id });
 	}
 
 	function updateCard(card: Card) {
@@ -150,7 +162,7 @@
 		new_stack.splice(insert_idx, 0, studying_id);
 		// id2idx.set(buf_card.card.id, study_idx);
 
-		if (new_stack.length == 1 && (score < 3 && isAnki) || score < 1) {
+		if (new_stack.length == 1 && (score < 2 && isAnki) || score < 1) {
 			cardIsRevealed = false;
 			stacks = stacks;
 			await sleep(900); // hack to avoid frontend rendering bug
@@ -291,8 +303,8 @@
 				sessionStarted = true;
 				getNextCard();
 			} else {
-				revealCard()
 				recordMessage();
+				revealCard()
 			}
 		}
 
@@ -386,13 +398,13 @@
 	function getInstruction(processedAnswer: string) {
 		// send request to chatGPT
 		// let query = "QUESTION: " + stripHtml(currCard.card.front) + stripHtml(currCard.card.back) + " RESPONSE: " + processedAnswer
-		let query = chatMessages.length == 0 
-			? stripHtml(currCard.card.front) + " I responded with this: " + processedAnswer + "The true answer is this: " + stripHtml(currCard.card.back) // look at ground truth
-			: processedAnswer
+		let query = chatMessages.length == 0 && !cardIsRevealed
+			? `Now AI Instructor will evaluate my guess in at most two sentences. Restrictions: (1) explain if correct or incorrect, rarely saying incorrect (2) address incorrect points by explaining how things actually are (3) a guess is correct if it says the same thing as the answer (4) don't congratulate (5) avoid restating the answer. Question: ${stripHtml(currCard.card.front)} True Answer: ${stripHtml(currCard.card.back)} My guess: ${stripHtml(userAnswer)}  AI Instructor evaluation:`
+			: "Explain new concepts on the same topic based on my confusion: " + processedAnswer
 		
-		let systemPrompt = chatMessages.length == 0
-			? "Evaluate whether my response to the card was correct to the answer or on the right track, and point out where I was wrong. Without restating or repeating the question or response, give me an explanation of the wider context to help deepen their understanding of the topic. Avoid apologizing. Be concise, and no need to be comprehensive. Respond in two sentences maximum."
-			: "You are an AI assistant teaching a student. Answer concisely and helpfully. Try not to repeat what has been said."
+		let systemPrompt = chatMessages.length == 0 && !cardIsRevealed
+			? "AI Instructor is designed to be able to assess if the answer given to the card was accurate or on track, highlighting any mistakes. It avoids repeating what the card says. It is fun and kind. Every once in a while, it discretely slips in a joke. Keep it brief and concise, without apologies, and limit your response to two sentences. AI Instructor is a powerful tool to evaluate guesses against answer."
+			: "AI Assistant is designed to give a broader understanding of a fact. Answer concisely and helpfully. Avoid repeating what has been said. AI Instructor is a powerful tool to explain new concepts."
 
 		chatMessages = [...chatMessages, { role: 'user', content: query }]
 		const eventSource = new SSE('/api/chat', {
@@ -401,7 +413,9 @@
 			},
 			payload: JSON.stringify({ 
 				messages: chatMessages,
-				systemPrompt: systemPrompt 
+				systemPrompt: systemPrompt,
+				maxTokens: 1000
+
 			})
 		})
 
@@ -436,13 +450,16 @@
 					return;
 				}
 
-				const completionResponse = JSON.parse(e.data)
-				const [{ delta }] = completionResponse.choices
-				if (delta.content) {
-					aiMessage = (aiMessage ?? '') + delta.content
+				if (messages.length > 0) {
+					const completionResponse = JSON.parse(e.data)
+					const [{ delta }] = completionResponse.choices
+					if (delta.content) {
+						aiMessage = (aiMessage ?? '') + delta.content
+					}
+					let myDiv: any = document.getElementById("chatbox");
+					myDiv.scrollTop = myDiv.scrollHeight;
 				}
-				let myDiv: any = document.getElementById("chatbox");
-  				myDiv.scrollTop = myDiv.scrollHeight;
+				
 
 			} catch (err) {
 				handleError(err)
@@ -454,15 +471,15 @@
 
 	function handleError<T>(err: T) {
 		console.error(err)
-		chatMessages.push({
-			"role": 'assistant', 
-			"content": "ERROR: NO SIGNAL"
-		})
+		// chatMessages.push({
+		// 	"role": 'assistant', 
+		// 	"content": "ERROR: NO SIGNAL"
+		// })
 
-		messages.push({
-			type: "assistant",
-			content: "ERROR: NO SIGNAL"
-		})
+		// messages.push({
+		// 	type: "assistant",
+		// 	content: "ERROR: NO SIGNAL"
+		// })
 		messages = messages
 		loading = false
 
@@ -488,8 +505,8 @@
 <!-- Listen for keyboard events -->
 <svelte:window on:keydown={onKeyDown} bind:innerHeight={windowHeight}/>
 <!-- Home button -->
-<div class={isDarkMode ? "dark" : ""}>
-<div class="bg-offwhite dark:bg-offblack h-screen text-blacktext">
+<div class={isDarkMode ? "dark overflow-none" : ""}>
+<div class="bg-offwhite dark:bg-offblack min-h-screen text-blacktext {cardIsRevealed ?? 'left_navbar'} ">
 	<div class="{windowHeight > 450 ? "h-5" : "h-2"}"></div>
 
 	<!-- bar at top -->
@@ -549,8 +566,8 @@
 
 
 									<!-- front field -->
-									<div on:focusout={() => updateCard(currCard.card)} class="w-[520px] lg:w-[700px] mx-8 {messages.length == 0 ? "my-4 mt-4" : "my-1"} text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
-										<TextfieldEditor bind:content={currCard.card.front} is_reviewfront={true} />
+									<div on:focusout={() => updateCard(currCard.card)} class="w-[520px] lg:w-[700px] mx-8 {messages.length == 0 ? "mb-3 mt-1" : "my-1"} text-inherit dark:bg-slate-700 dark:text-columbia p-2 rounded-lg" >    
+										<TextfieldEditor bind:content={currCard.card.front} is_reviewfront={true} is_large={true} />
 									</div>          
 									
 									<!-- rule separating front and back fields -->
@@ -560,15 +577,15 @@
 									{#if !cardIsRevealed}
 										<div class="mx-8 my-6 text-inherit"></div>          
 									{:else}
-										<div on:focusout={() => updateCard(currCard.card)} class="h-1/2 mx-8 mt-4 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
-											<TextfieldEditor bind:content={currCard.card.back} is_reviewback={true} />
+										<div on:focusout={() => updateCard(currCard.card)} class="mx-8 mt-4 text-inherit dark:bg-slate-700 p-2 rounded-lg dark:text-columbia" transition:fade="{{duration: 150 }}" >         
+											<TextfieldEditor bind:content={currCard.card.back} is_reviewback={true} is_large={true}/>
 										</div>          
 									{/if}
 										
 
 									{#if cardIsRevealed}
 										<!-- answer bar -->
-										<div class="grid {isAnki ? "grid-cols-5" : "grid-cols-3"} text-xs font-serif font-light opacity-100 mb-1 z-50">
+										<!-- <div class="grid {isAnki ? "grid-cols-5" : "grid-cols-3"} text-xs font-serif font-light opacity-100 mb-1 z-50">
 											<div class="col-span-1 text-center flex justify-center items-center">
 												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
 													<path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -581,9 +598,33 @@
 													<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 												</svg>
 											</div>
+										</div> -->
+
+										<!-- number of days -->
+										<div class="flex font-serif items-center justify-center">     
+													
+											<div class="h-5 relative {isAnki ? "w-1/5" : "w-1/3"} z-30 inline-flex items-center justify-center px-8 py-1 text-sm overflow-hidden font-light opacity-50 text-gray-500 rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline pointer-text ring-columbia focus:outline-none focus:ring duration-0">
+												{nextIntervals.r1}d
+											</div>
+										
+											<div class="h-5 relative {isAnki ? "w-1/5" : "w-1/3"} z-30 inline-flex items-center justify-center px-8 py-1 text-sm overflow-hidden font-light opacity-50 text-gray-500 rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline pointer-text ring-columbia focus:outline-none focus:ring duration-0">
+												{nextIntervals.r2}d
+											</div>
+													
+											<div class="h-5 relative {isAnki ? "w-1/5" : "w-1/3"} z-30 inline-flex items-center justify-center px-8 py-1 text-sm overflow-hidden font-light opacity-50 text-gray-500 rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline pointer-text ring-columbia focus:outline-none focus:ring duration-0">
+												{nextIntervals.r3}d
+											</div>
+
+											<div class="h-5 relative {isAnki ? "w-1/5" : "w-1/3"} z-30 inline-flex items-center justify-center px-8 py-1 text-sm overflow-hidden font-light opacity-50 text-gray-500 rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline pointer-text ring-columbia focus:outline-none focus:ring duration-0">
+												{nextIntervals.r4}d
+											</div>
+
+											<div class="h-5 relative {isAnki ? "w-1/5" : "w-1/3"} z-30 inline-flex items-center justify-center px-8 py-1 text-sm overflow-hidden font-light opacity-50 text-gray-500 rounded-bl-lg cursor-pointer group ease  outline-columbia focus:outline pointer-text ring-columbia focus:outline-none focus:ring duration-0">
+												{nextIntervals.r5}d
+											</div>
 										</div>
 
-										<div class="flex font-mono items-center justify-center top-[450px]">     
+										<div class="flex font-mono items-center justify-center">     
 													
 											<button 
 												on:click={() => handleResponse(1)}
@@ -596,6 +637,7 @@
 												on:click={() => handleResponse(2)}
 												class="h-5 {isAnki ? "w-1/5" : "w-1/3"} relative z-30 inline-flex items-center justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 border-y border-l border-columbia {isAnki ? "" : "rounded-bl-none" } cursor-pointer group ease  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-0">
 												2
+
 											</button>
 
 											<button
@@ -620,6 +662,7 @@
 												</button>
 											{/if}
 										</div>
+										
 
 									{/if}
 								</div>
@@ -635,18 +678,15 @@
 													<div id="chatbox" class="max-h-80 overflow-y-scroll scroll-my-12 flex flex-col z-50">
 														{#each messages as message, index}
 															{#if loading && index % 2 == 1 && index == messages.length - 1}
-																<!-- <div class="{index == messages.length - 1 ?? "mb-1"} inline-block text-sm px-4 rounded-2xl bg-platinum dark:bg-slate-700 p-2 m-2 mr-8 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100">
-																	{message.content}
-																</div> -->
-																<div class="{index == messages.length - 1 ?? "mb-1"} ring-columbia font-light bg-platinum dark:bg-slate-700 inline-block px-3 rounded-md p-2 m-2 mr-8 cursor-text text-light transition-opacity duration-100 text-md">
+																<p class="{index == messages.length - 1 ?? "mb-1"} ring-columbia font-light bg-platinum dark:bg-slate-700 inline-block px-3 rounded-md p-2 m-2 mr-8 cursor-text text-light transition-opacity duration-100 text-md">
 																	{message.content}	
-																</div>
+																</p>
 															{:else}
 																<ChatTextfieldEditor index={index} content={message.content} />
 															{/if}
 														{/each}
 														{#if aiMessage.length > 0}
-															<div class="font-light inline-block text-sm px-4 rounded-md bg-platinum dark:bg-slate-700 p-2 m-2 mr-8 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100">
+															<div class="font-light inline-block text-md px-4 rounded-md bg-platinum dark:bg-slate-700 p-2 m-2 mr-8 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100">
 																{aiMessage}
 															</div>
 														{/if}
@@ -834,7 +874,7 @@
 <style lang="postcss">
     .card-container {                                                           
         display: grid;                                                          
-        grid-gap: 32px;                                                         
+        grid-gap: 24px;                                                         
         justify-content: center;                                                
         padding: initial;                                                       
     }                       
@@ -845,7 +885,11 @@
         transition: all 0.3s cubic-bezier(0, 0, 0.5, 1);                        
                                      
     }                          
-	                                                                  
+
+	.left_navbar {
+		height: calc(100vh + 200px);
+	}
+
 
 
 </style>

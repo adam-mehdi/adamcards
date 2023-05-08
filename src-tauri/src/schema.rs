@@ -87,6 +87,7 @@ diesel::table! {
         config_id -> Integer,
         is_dark_mode -> Bool,
         is_text_field -> Bool,
+        api_key -> Nullable<Text>,
     }
 }
 

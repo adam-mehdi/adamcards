@@ -50,7 +50,7 @@
             ],
             editorProps: {
                 attributes: {
-                    class: 'prose prose-light dark:prose-invert prose-sm mx-auto focus:outline-none code:font-mono leading-5',
+                    class: 'prose prose-light dark:prose-invert prose-md mx-auto focus:outline-none code:font-mono leading-6',
                 },
                 
             },

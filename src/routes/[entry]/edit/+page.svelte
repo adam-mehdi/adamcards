@@ -95,7 +95,7 @@
 
 		deadlineContents = await invoke('read_deadline_contents', { deadlineId });
 		if (deadlineContents.length == 0) return
-		panel.selected_deck = deadlineContents[0].deck_name.toString();
+		panel.selected_deck = deadlineContents[deadlineContents.length - 1].deck_name.toString();
 
 		for (let deckContents of deadlineContents) {
 			for (let card of deckContents.cards) {
@@ -405,18 +405,19 @@
 		// TODO: card.card.explanation
 		card.loading = true;
 		// process front and back
-		let query = "Here is the question: " + stripHtml(card.card.front) + " Here is the answer: " + stripHtml(card.card.back)
+		let query = `AI Explainer will explain the fact insightfully and creatively. Restriction: avoid restating the answer Question: ${stripHtml(card.card.front)} Answer: ${stripHtml(card.card.back)} AI Explainer explanation:`
 
-		chatMessages = [...chatMessages, { role: 'user', content: query }]
+		chatMessages = [{ role: 'user', content: query }]
 
-		const systemPrompt = "Given a question and answer input, provide a concise explanation. Limit your explanation to two to three lines. Avoid apologizing or restating. Do not repeat what the answer says. Say new things that are true and insightful. Do not repeat what has been said so far. Be creative. Say something new."
+		const systemPrompt = "AI Explainer is designed to be able to justify a fact for a student's understanding. All its explanations are TWO sentences. For a given question and answer,  it is the best at offering brief yet insightful explanations. It limit its response to two or three lines, avoiding repetition, apologies, or restating. Be original, informative, and true to the subject matter."
 		const eventSource = new SSE('/api/chat', {
 			headers: { 
 				'Content-Type': 'application/json'
 			},
 			payload: JSON.stringify({ 
 				messages: chatMessages,  
-				systemPrompt: systemPrompt
+				systemPrompt: systemPrompt,
+				maxTokens: 1000
 			})
 		})
 
@@ -458,16 +459,18 @@
 		let text = panel.textfield.replaceAll("</div><div>", "</div>\n<div>") 
 		text = stripHtml(text)
 		text = text.replaceAll("•", "");
+		const num_questions = text.split("?").length - 1
+		text = `Now AI Synthesizer will create cards (question-answer pairs) from the provided text. It separates cards with "<br><br>" after each answer. Restrictions: (1) question and answer are separated with ">>" (2) cards are separated with "<br><br>" (3) rephrase question if convoluted or ungrammatical (4) answer is one or several fragments, not complete sentences (5) rephrase provided answer if given (6) create ${num_questions} card(s), one corresponding to each question in the provided text. (7) each line should be in the format question >> answer with no other information (8) avoid complete sentence outputs Provided text: ${text} AI Synthesizer created cards: `
 		panel.textfield = ''
 		loadingSuggestions = true;
 
-		const num_questions = text.split("?").length - 1
+		
 		
 	
 
 		suggestionMessages = [...suggestionMessages, { role: 'user', content: text }]
 
-		const systemPrompt = `Create flashcards using the provided text. A flashcard comprises a question and answer. The question and answer are separated by a question mark. Create ${num_questions} flashcards, each corresponding to a question in the input. That's ${num_questions} questions, no more no less. The question and answer should not be labeled or numbered. Separate questions and answers with the delimiter ">>". Mark the end of each card with <br><br> before starting a new question. For questions with no answer, use context from the following lines or provide a suitable answer yourself. Write the front as a concise question and the back in brief, informative statements. The back should be as short as possible, in one sentence. Avoid two sentences and never output more than two. Never change an answer if it is provided. Avoid changing a question unless it is wordy or ungrammatical. After every answer put the <br> token. Output ${num_questions} flashcards. Remember, the delimiter is >>.`
+		const systemPrompt = `Create flashcards using the provided text, with the front (question or term) and back (answer or definition) of each card separated by the delimiter >>. Mark the end of each card with <br> before starting a new question. For cards with an empty back, use context from the following lines or provide a suitable answer yourself. Write the front as a concise question and the back in brief, informative statements. The back should be as short as possible, in one sentence. Avoid two sentences and never output more than two.Never change an answer if it is provided. Avoid changing a question unless it is wordy or ungrammatical.`
 		const eventSource = new SSE('/api/chat', {
 			headers: { 
 				'Content-Type': 'application/json'
@@ -486,7 +489,7 @@
 			try {
 				if (e.data === "[DONE]") {
 					suggestionMessages = []
-					panel.textfield = panel.textfield.replaceAll(" >> ", " » ")
+					panel.textfield = panel.textfield.replaceAll(">>", " » ")
 					panel.textfield = panel.textfield.replaceAll("<br><br>", "<br></div><div>")
 					loadingSuggestions = false
 					return;
@@ -529,8 +532,8 @@
 
 	
 <div class="{isDarkMode ? "dark" : ""}">
-	<div class="min-h-screen h-full bg-offwhite dark:bg-offblack ">
-		<div class="">
+	<div class="min-h-screen h-full bg-offwhite dark:bg-offblack">
+		<div class="mb-5">
 		
 		<div class="flex justify-start space-x-5 mx-10">
 			
@@ -683,9 +686,9 @@
 					<button 
 						on:click={getSuggestions} 
 						class="h-8 w-1/6 relative z-50 inline-flex items-center stroke-blacktext fill-columbia justify-center px-8 py-3 overflow-hidden font-bold text-gray-500 transition-all border-y border-l border-gray-200 rounded-bl-lg cursor-pointer group ease border-columbia  outline-columbia focus:outline outline-4 outline-offset-2 bg-gradient-to-b from-offwhite dark:from-offblack to-gray-50 hover:from-gray-50 hover:to-white active:to-white ring-columbia focus:outline-none focus:ring duration-75">
-						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
+						<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6 fill-columbia-dark dark:fill-columbia stroke-columbia dark:stroke-blacktext stroke-0">
 							<path fill-rule="evenodd" d="M9 4.5a.75.75 0 01.721.544l.813 2.846a3.75 3.75 0 002.576 2.576l2.846.813a.75.75 0 010 1.442l-2.846.813a3.75 3.75 0 00-2.576 2.576l-.813 2.846a.75.75 0 01-1.442 0l-.813-2.846a3.75 3.75 0 00-2.576-2.576l-2.846-.813a.75.75 0 010-1.442l2.846-.813A3.75 3.75 0 007.466 7.89l.813-2.846A.75.75 0 019 4.5zM18 1.5a.75.75 0 01.728.568l.258 1.036c.236.94.97 1.674 1.91 1.91l1.036.258a.75.75 0 010 1.456l-1.036.258c-.94.236-1.674.97-1.91 1.91l-.258 1.036a.75.75 0 01-1.456 0l-.258-1.036a2.625 2.625 0 00-1.91-1.91l-1.036-.258a.75.75 0 010-1.456l1.036-.258a2.625 2.625 0 001.91-1.91l.258-1.036A.75.75 0 0118 1.5zM16.5 15a.75.75 0 01.712.513l.394 1.183c.15.447.5.799.948.948l1.183.395a.75.75 0 010 1.422l-1.183.395c-.447.15-.799.5-.948.948l-.395 1.183a.75.75 0 01-1.422 0l-.395-1.183a1.5 1.5 0 00-.948-.948l-1.183-.395a.75.75 0 010-1.422l1.183-.395c.447-.15.799-.5.948-.948l.395-1.183A.75.75 0 0116.5 15z" clip-rule="evenodd" />
-						  </svg>
+						</svg>
 					</button>
 
 				{/if}
@@ -903,6 +906,10 @@
 		box-shadow: 0 10px 20px -8px rgba(197, 214, 214);                       
         transition: all 0.3s cubic-bezier(0, 0, 0.5, 1);                                                                    
     }                                                                           
+
+	.scroll_pad {
+		height: calc(100vh + 200px);
+	}
 
 
 </style> 

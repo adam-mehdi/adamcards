@@ -217,7 +217,7 @@ pub fn insert_deck_contents(conn: &mut SqliteConnection, deck_new_contents: Deck
     use crate::schema::cards;
 
     let (box_pos, reps, easiness, interval) = if is_anki {
-        (None, Some(0), Some(2.5), Some(1))
+        (None, Some(0), Some(2.5), Some(0))
     } else {
         (Some(0), None, None, None)
     };

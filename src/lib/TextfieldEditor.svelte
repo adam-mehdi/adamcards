@@ -38,10 +38,10 @@
     export let is_reviewfront = false
     export let is_reviewback = false
     if (is_reviewfront) {
-      max_height = "120px"
+      max_height = "250px"
     }
     if (is_reviewback) 
-      max_height = "125px"
+      max_height = "255px"
 
     let overflow = is_answerbar ? "scroll" : "scroll" 
 
@@ -60,6 +60,7 @@
     })
     
     export let loading = false;
+    export let is_large = false;
 
     onMount(() => {
         editor = new Editor({
@@ -87,7 +88,7 @@
             ],
             editorProps: {
                 attributes: {
-                    class: 'prose prose-light dark:prose-invert prose-md mx-auto focus:outline-none code:font-mono leading-7',
+                    class: 'prose prose-light dark:prose-invert mx-auto focus:outline-none code:font-mono leading-7 ' + (is_large ? 'prose-lg' : 'prose-md'),
                 },
                 
             },

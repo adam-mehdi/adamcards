@@ -119,6 +119,31 @@ pub fn write_dark_mode(state: tauri::State<DatabaseState>, is_dark_mode: bool) {
         .expect("failed to set dark mode");
 }
 
+#[tauri::command] 
+pub fn write_api_key(state: tauri::State<DatabaseState>, api_key: String) { 
+    use crate::schema::userconfig;
+    
+    let conn= &mut *state.conn.lock().unwrap();
+    update(userconfig::table)
+        .set(userconfig::api_key.eq(api_key))
+        .execute(conn)
+        .expect("failed to set dark mode");
+}
+
+#[tauri::command] 
+pub fn get_api_key(state: tauri::State<DatabaseState>) -> Option<String> { 
+    use crate::schema::userconfig;
+    
+    let conn= &mut *state.conn.lock().unwrap();
+    let api_key = userconfig::table
+        .select(userconfig::api_key)
+        .get_result::<Option<String>>(conn)
+        .expect("failed to set dark mode");
+
+    api_key
+}
+
+
 
 #[tauri::command] 
 pub fn read_folder_system(state: tauri::State<DatabaseState>) -> Option<FolderSystem> {
@@ -300,7 +325,7 @@ pub fn get_deck_quota(conn: &mut SqliteConnection, deck_id: i32) -> Option<Quota
                 0
             );
             num_review = std::cmp::max( // FIX FOR REVIEW
-                std::cmp::min(num_review - rev_prac, num_new), 
+                num_review,
                 0
             );
         } else {
@@ -525,12 +550,20 @@ pub fn delete_entry(state: tauri::State<DatabaseState>, entry_id: i32) {
 
     // iteratively delete ids that descend from this id
     let mut parents = vec![entry_id];
+    let mut i = 0;
     loop {
         let children = parents::table
             .filter(parents::parent_id.eq_any(parents))
             .select(parents::child_id)
             .get_results(conn)
             .expect("failed to select children");
+
+        if children.len() == 0 && i == 0 {
+            delete(parents::table.filter(parents::child_id.eq(entry_id)))
+                .execute(conn)
+                .expect("failed to delete deck pair");
+
+        }
 
         if children.len() == 0 {
             break;
@@ -542,6 +575,7 @@ pub fn delete_entry(state: tauri::State<DatabaseState>, entry_id: i32) {
             .expect("failed to delete children");
 
         parents = children;
+        i += 1;
     }
 
     // delete this entry
