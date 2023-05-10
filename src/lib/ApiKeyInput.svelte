@@ -91,7 +91,7 @@
         {:else if invalidApiKeySubmitted}
             <h2 class="mb-2 font-mono text-sm">Invalid API Key. Resubmit new key</h2>
         {:else}
-            <h2 class="mb-2 font-mono text-sm">API Key found. You're all ready to go</h2>
+            <h2 class="mb-2 font-mono text-sm">API Key works! You're all ready to go</h2>
         {/if}
 
     </div>

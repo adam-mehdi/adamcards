@@ -394,8 +394,23 @@
 
 	}
 
+	import { appWindow } from '@tauri-apps/api/window';
+	type Delta = {
+		content: string | null;
+		role: string | null;
+	};
+
+	type Choice = {
+		delta: Delta;
+		finish_reason: string | null;
+		index: number;
+	};
+
+	type ResponseObjectType = {
+		choices: Choice[];
+	};
 	let aiMessage = ""
-	async function getInstruction(processedAnswer: string) {
+	async function getInstruction(processedAnswer: string, ) {
 		// send request to chatGPT
 		// let query = "QUESTION: " + stripHtml(currCard.card.front) + stripHtml(currCard.card.back) + " RESPONSE: " + processedAnswer
 
@@ -405,96 +420,84 @@
 			return
 		}
 
-		let query = chatMessages.length == 0 && !cardIsRevealed
-			? `Now AI Instructor will evaluate my guess in at most two sentences. Restrictions: (1) explain if correct or incorrect, rarely saying incorrect (2) address incorrect points by explaining how things actually are (3) a guess is correct if it says the same thing as the answer (4) don't congratulate (5) avoid restating the answer. Question: ${stripHtml(currCard.card.front)} True Answer: ${stripHtml(currCard.card.back)} My guess: ${stripHtml(userAnswer)}  AI Instructor evaluation:`
-			: "Explain new concepts on the same topic based on my confusion: " + processedAnswer
+		let query = messages.length === 1
+			? `Now AI Instructor will evaluate my guess in at most two sentences. Restrictions: (1) explain if seems correct, partially correct or incorrect, defaulting to incorrect (2) address incorrect points by explaining how things actually are (3) a guess is correct if it says the same thing as the answer (4) don't congratulate (5) avoid restating the answer. Question: ${stripHtml(currCard.card.front)} True Answer: ${stripHtml(currCard.card.back)} My guess: ${stripHtml(userAnswer)}  AI Instructor evaluation:`
+			: `Write in small paragraphs, putting "<br><br>" between each paragraph. Respond to my prompt with elucidating examples. My prompt: "${processedAnswer}" Your explanation: `
 		
-		let systemPrompt = chatMessages.length == 0 && !cardIsRevealed
+		let systemPrompt = messages.length === 1
 			? "AI Instructor is designed to be able to assess if the answer given to the card was accurate or on track, highlighting any mistakes. It avoids repeating what the card says. It is fun and kind. Every once in a while, it discretely slips in a joke. Keep it brief and concise, without apologies, and limit your response to two sentences. AI Instructor is a powerful tool to evaluate guesses against answer."
-			: "AI Assistant is designed to give a broader understanding of a fact. Answer concisely and helpfully. Avoid repeating what has been said. AI Instructor is a powerful tool to explain new concepts."
+			: `AI Assistant is designed to give a broader understanding of a fact. Answer concisely and helpfully, with short paragraphs and "<br><br>" between each. Avoid repeating what has been said. AI Instructor is a powerful tool to explain new concepts.`
 
 		chatMessages = [...chatMessages, { role: 'user', content: query }]
-		const eventSource = new SSE('/api/chat', {
-			headers: { 
-				'Content-Type': 'application/json'
-			},
-			payload: JSON.stringify({ 
-				messages: chatMessages,
-				systemPrompt: systemPrompt,
-				maxTokens: 1000,
-				apiKey
-			})
-		})
 
-		eventSource.addEventListener('error', handleError);
+		const unlistenChatGPT = await appWindow.listen(
+			'CHATGPT_RESPONSE',
+			({ event, payload }: { event: string; payload: ResponseObjectType }) => {
+				try {
+					// do nothing if user got next card when ChatGPT was in the middle of responding
+					if (messages.length == 0)
+						return
+						
+					if (payload.choices[0].finish_reason === "stop") {
+						loading = false
 
-		eventSource.addEventListener('message', (e) => {
-			try {
-				// do nothing if user got next card when ChatGPT was in the middle
-				// of responding
-				if (messages.length == 0)
-					return
-					
-				if (e.data === "[DONE]") {
-					loading = false
+						chatMessages.push({
+							"role": 'assistant', 
+							"content": aiMessage
+						})
 
-					chatMessages.push({
-						"role": 'assistant', 
-						"content": aiMessage
-					})
+						messages.push({
+							type: "assistant",
+							content: aiMessage
+						})
+						aiMessage = ""
+						messages = messages
+						let myDiv: any = document.getElementById("chatbox");
 
-					messages.push({
-						type: "assistant",
-						content: aiMessage
-					})
-					aiMessage = ""
-					messages = messages
-					let myDiv: any = document.getElementById("chatbox");
-					setTimeout(() => {
-						const isAtBottom = myDiv.scrollHeight - myDiv.scrollTop === myDiv.clientHeight;
+						setTimeout(() => {
+							// const isAtBottom = myDiv.scrollHeight - myDiv.scrollTop === myDiv.clientHeight;
 
-						if (isAtBottom) {
+							// if (isAtBottom) {
+							myDiv.scrollTop = myDiv.scrollHeight;
+							// }
+						}, 250);
+
+						unlistenChatGPT()
+						return;
+					}
+
+					if (messages.length > 0) {
+						const delta = payload.choices[0].delta.content;
+						if (delta) {
+							aiMessage = aiMessage + delta
+							let myDiv: any = document.getElementById("chatbox");
 							myDiv.scrollTop = myDiv.scrollHeight;
 						}
-					}, 200);
-
-					return;
-				}
-
-				if (messages.length > 0) {
-					const completionResponse = JSON.parse(e.data)
-					const [{ delta }] = completionResponse.choices
-					if (delta.content) {
-						aiMessage = (aiMessage ?? '') + delta.content
 					}
-					let myDiv: any = document.getElementById("chatbox");
-					myDiv.scrollTop = myDiv.scrollHeight;
-				}
-				
+				} catch (err) {
+					loading = false
+					unlistenChatGPT()
 
-			} catch (err) {
-				handleError(err)
-				loading = false
+					handleError(err)
+				}
+
 			}
-		});
-		eventSource.stream()
+		);
+
+		invoke('send_gpt_request', {
+			apiKey,
+			messages: chatMessages.map((message) => message.content),
+			systemPrompt: systemPrompt,
+			maxTokens: 2000,
+			window: appWindow 
+		 });
+		
 	}
 
 	function handleError<T>(err: T) {
 		console.error(err)
-		// chatMessages.push({
-		// 	"role": 'assistant', 
-		// 	"content": "ERROR: NO SIGNAL"
-		// })
-
-		// messages.push({
-		// 	type: "assistant",
-		// 	content: "ERROR: NO SIGNAL"
-		// })
 		messages = messages
 		loading = false
-
-
 	}
 
 	function stripHtml(content: string): string {
@@ -595,21 +598,7 @@
 										
 
 									{#if cardIsRevealed}
-										<!-- answer bar -->
-										<!-- <div class="grid {isAnki ? "grid-cols-5" : "grid-cols-3"} text-xs font-serif font-light opacity-100 mb-1 z-50">
-											<div class="col-span-1 text-center flex justify-center items-center">
-												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M9.75 9.75l4.5 4.5m0-4.5l-4.5 4.5M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-												</svg>
-												  
-											</div>
-											<div class="{isAnki ? "col-span-3" : "col-span-1"}"></div>
-											<div class="col-span-1 text-center flex justify-center items-center">
-												<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6">
-													<path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-												</svg>
-											</div>
-										</div> -->
+									<!-- answer bar -->
 
 										<!-- number of days -->
 										<div class="flex font-serif items-center justify-center">     
@@ -698,7 +687,7 @@
 														{/each}
 														{#if aiMessage.length > 0}
 															<div class="font-light inline-block text-md px-4 rounded-md bg-platinum dark:bg-slate-700 p-2 m-2 mr-8 cursor-text focus-within:ring-2  ring-columbia transition-opacity duration-100">
-																{aiMessage}
+																{@html aiMessage}
 															</div>
 														{/if}
 													</div>

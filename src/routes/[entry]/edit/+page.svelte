@@ -10,8 +10,6 @@
 	import { onMount, onDestroy } from 'svelte'
 	import TextfieldEditor from '$lib/TextfieldEditor.svelte'
   	import type { ChatCompletionRequestMessage } from 'openai';
-	import { SSE } from 'sse.js';
-	import { textPasteRule } from '@tiptap/core';
 	// import { processChatRequest } from '$lib/chatProcessor';
 
 	
@@ -411,51 +409,70 @@
 
 		card.loading = true;
 		// process front and back
-		let query = `AI Explainer will explain the fact insightfully and creatively. Restriction: avoid restating the answer Question: ${stripHtml(card.card.front)} Answer: ${stripHtml(card.card.back)} AI Explainer explanation:`
+		let query = `I want you to act as Mnemonic Tutor. I will provide a flashcard, and it will be your job to concisely explain it in easy-to-understand terms. This could include providing novel step-by-step instructions for answering the question, demonstrating implications with visuals or suggesting mnemonics to remember it. My first card is FRONT: "${stripHtml(card.card.front)}" BACK: "${stripHtml(card.card.back)}"`
 
 		chatMessages = [{ role: 'user', content: query }]
 
-		const systemPrompt = "AI Explainer is designed to be able to justify a fact for a student's understanding. All its explanations are TWO sentences. For a given question and answer,  it is the best at offering brief yet insightful explanations. It limit its response to two or three lines, avoiding repetition, apologies, or restating. Be original, informative, and true to the subject matter."
+		const systemPrompt = "Introducing Mnemonic Tutor designed to help students understand facts through brief yet insightful explanations. This AI-powered system limits its responses to two sentences, avoiding repetition, apologies, or restating, while providing original, informative, and true-to-subject-matter answers that will help students learn more efficiently."
 
-		const eventSource = new SSE('/api/chat', {
-			headers: { 
-				'Content-Type': 'application/json'
-			},
-			payload: JSON.stringify({ 
-				messages: chatMessages,
-				systemPrompt: systemPrompt,
-				maxTokens: 1000,
-				apiKey
-			})
-		})
+		const unlistenChatGPT = await appWindow.listen(
+			`CHATGPT_RESPONSE_${card.card.id}`,
+			({ event, payload }: { event: string; payload: ResponseObjectType }) => {
+				try {
+					if (payload.choices[0].finish_reason === "stop") {
+						chatMessages = []
+						card.loading = false
+						updateCard(card.card) // save explanation
+						card_gallery = card_gallery
 
+						unlistenChatGPT()
+						return;
+					}
 
-		eventSource.addEventListener('error', handleError);
+					const delta = payload.choices[0].delta.content;
 
-		eventSource.addEventListener('message', (e) => {
-			try {
-				if (e.data === "[DONE]") {
-					chatMessages = []
-					card.loading = false
-					updateCard(card.card) // save explanation
-					card_gallery = card_gallery
-					return;
+					if (delta) {
+						card.card.explanation = card.card.explanation + delta;
+						card_gallery = card_gallery
+
+					}
+				} catch (err) {
+					loadingSuggestions = false
+					unlistenChatGPT()
+
+					handleError(err)
 				}
 
-				const completionResponse = JSON.parse(e.data)
-				const [{ delta }] = completionResponse.choices
-				if (delta.content) {
-					card.card.explanation = (card.card.explanation ?? '') + delta.content
-					card_gallery = card_gallery
-				}
-			} catch (err) {
-				card.loading = false
-				handleError(err)
 			}
-		});
-		eventSource.stream()
-		
+		);
+
+		invoke('send_gpt_request', {
+			apiKey,
+			messages: [query],
+			systemPrompt: systemPrompt,
+			maxTokens: 1000,
+			window: appWindow,
+			cardId: card.card.id
+		 });
+
 	}
+
+
+	import { appWindow } from '@tauri-apps/api/window';
+	type Delta = {
+		content: string | null;
+		role: string | null;
+	};
+
+	type Choice = {
+		delta: Delta;
+		finish_reason: string | null;
+		index: number;
+	};
+
+	type ResponseObjectType = {
+		choices: Choice[];
+	};
 
 
 	let loadingSuggestions = false
@@ -468,72 +485,60 @@
 		text = stripHtml(text)
 		text = text.replaceAll("•", "");
 		const num_questions = text.split("?").length - 1
-		text = `Now AI Synthesizer will create cards (question-answer pairs) from the provided text. It separates cards with "<br><br>" after each answer. Restrictions: (1) question and answer are separated with ">>" (2) cards are separated with "<br><br>" (3) rephrase question if convoluted or ungrammatical (4) answer is one or several fragments, not complete sentences (5) rephrase provided answer if given (6) create ${num_questions} card(s), one corresponding to each question in the provided text. (7) each line should be in the format question >> answer with no other information (8) avoid complete sentence outputs Provided text: ${text} AI Synthesizer created cards: `
+		
+		text = `I want you to act as Card Creator. Card Creator will create cards (question-answer pairs) from the provided text. It separates cards with "<br><br>" after each answer. Restrictions: (1) question and answer are separated with ">>" (2) cards are separated with "<br><br>" (3) rephrase question if convoluted or ungrammatical (4) answer is ONE sentence (5) rephrase provided answer if given (6) create ${num_questions} card(s), each corresponding to a question in the notes (7) each line should be in the format question >> answer with no other information (8) avoid complete sentence outputs (9) do not number cards. Provided text: ${text} Card Creator created cards: `
 		panel.textfield = ''
 		loadingSuggestions = true;
 
 		const apiKey = await invoke("get_api_key")
 		if (!apiKey) {
-			panel.textfield = "INVALID API KEY: RESUBMIT AND TRY AGAIN     " + panel.textfield
+			panel.textfield = "=== INVALID API KEY: RESUBMIT AND TRY AGAIN ===        " + panel.textfield
 			return
 		}
 
 		suggestionMessages = [...suggestionMessages, { role: 'user', content: text }]
+		// const systemPrompt = `Introducing the Card Creator, which can create flashcards from notes. It separates each card with "<br><br>", and it separates front and back of each card with ">>". Each card is a question-answer pair. If both the front and back of the flashcard is provided, AI Synthesizer only corrects grammar and simplifies prose. If only the front is provided, it gives a VERY concise back. Card Creator is a most powerful tool for creating flashcards from notes containing questions`
+		const systemPrompt = ``
 
-		const systemPrompt = `Create flashcards using the provided text, with the front (question or term) and back (answer or definition) of each card separated by the delimiter >>. Mark the end of each card with <br> before starting a new question. For cards with an empty back, use context from the following lines or provide a suitable answer yourself. Write the front as a concise question and the back in brief, informative statements. The back should be as short as possible, in one sentence. Avoid two sentences and never output more than two.Never change an answer if it is provided. Avoid changing a question unless it is wordy or ungrammatical.`
-		const eventSource = new SSE('/api/chat', {
-			headers: { 
-				'Content-Type': 'application/json'
-			},
-			payload: JSON.stringify({ 
-				messages: suggestionMessages,  
-				systemPrompt: systemPrompt,
-				maxTokens: 2000,
-				apiKey
-			})
-		})
+		const unlistenChatGPT = await appWindow.listen(
+			'CHATGPT_RESPONSE',
+			({ event, payload }: { event: string; payload: ResponseObjectType }) => {
+				try {
+					if (payload.choices[0].finish_reason === "stop") {
+						suggestionMessages = []
+						panel.textfield = panel.textfield.replaceAll(">>", " » ")
+						panel.textfield = panel.textfield.replaceAll("<br><br>", "<br></div><div>")
+						loadingSuggestions = false
 
+						unlistenChatGPT()
+						return;
+					}
 
-		eventSource.addEventListener('error', handleError);
+					const delta = payload.choices[0].delta.content;
+					if (delta) {
+						panel.textfield = panel.textfield + delta;
+					}
 
-		eventSource.addEventListener('message', (e) => {
-			try {
-				if (e.data === "[DONE]") {
-					suggestionMessages = []
-					panel.textfield = panel.textfield.replaceAll(">>", " » ")
-					panel.textfield = panel.textfield.replaceAll("<br><br>", "<br></div><div>")
+				} catch (err) {
 					loadingSuggestions = false
-					return;
+					unlistenChatGPT()
+
+					handleError(err)
 				}
 
-				const completionResponse = JSON.parse(e.data)
-				const [{ delta }] = completionResponse.choices
-				if (delta.content) {
-					panel.textfield = (panel.textfield ?? '') + delta.content
-				}
-			} catch (err) {
-				loadingSuggestions = false
-				handleError(err)
 			}
-		});
-		eventSource.stream()
+		);
+
+		invoke('send_gpt_request', {
+			apiKey,
+			messages: suggestionMessages.map((message) => message.content),
+			systemPrompt: systemPrompt,
+			maxTokens: 2000,
+			window: appWindow 
+		 });
+
 			
 	}
-
-	function splitStringIntoChunks(inputString: string, maxLines: number) {
-		const lines = inputString.split('\n');
-		const chunks = [];
-
-		for (let i = 0; i < lines.length; i += maxLines) {
-			const chunkLines = lines.slice(i, i + maxLines);
-			chunks.push(chunkLines.join('\n'));
-		}
-
-		return chunks;
-	}
-
-
-
 
 	function handleError<T>(err: T) {
 		console.error(err)
@@ -657,20 +662,20 @@
 	 <!-- central panel -->
 	<div class="mt-4 h-full flex flex-col justify-center items-center">
 		<!-- card fields -->
-		<div class="card flex flex-col h-full rounded-lg text-blacktext w-full sm:w-[600px] md:w-[650px] lg:w-[700px] dark:text-whitetext">
+		<div class="card flex flex-col h-full border-slate-700 dark:border-none rounded-lg text-blacktext w-full sm:w-[600px] md:w-[650px] lg:w-[700px] dark:text-whitetext">
 
 			{#key clearEditorToggle}
 			{#if !panel.display_textfield}
 				
 				<!-- front field -->
-				<div class="h-full max-h-80 mx-2 mb-1 border-l rounded-md border-columbia" >         
+				<div class="h-full max-h-80 mx-2 mb-1 border-l rounded-md border-columbia-dark dark:border-columbia" >         
 					<div class="h-full p-1 rounded-lg ">
 						<TextfieldEditor bind:content={panel.front} autofocus={true}/>
 					</div>
 				</div>          
 
 				<!-- back field -->
-				<div class="h-full max-h-80 mx-2 border-l rounded-md mb-1 border-columbia" >         
+				<div class="h-full max-h-80 mx-2 border-l rounded-md mb-1 border-columbia-dark dark:border-columbia" >         
 					<div class="h-full p-1 rounded-lg ">
 						<TextfieldEditor bind:content={panel.back} />
 					</div>
@@ -679,7 +684,7 @@
 
 			{:else}
 				<div class="h-full m-3 mb-2 text-inherit" >         
-					<div class="h-full p-1 rounded-lg border-l border-columbia">
+					<div class="h-full p-1 rounded-lg border-l border-columbia-dark dark:border-columbia">
 						{#key loadingSuggestions}
 							<TextfieldEditor bind:content={panel.textfield} is_textfield={true} loading={loadingSuggestions} />
 						{/key}
@@ -798,14 +803,14 @@
 							<input type="text"
 								bind:value={panel.prompt}
 								on:change={filterCards}
-								class="pl-2 h-8 placeholder:opacity-60 placeholder:text-center border-y border-r rounded-r-lg w-full border-columbia py-2 pr-10 focus:outline-none"
+								class="pl-2 h-8 placeholder:opacity-50 placeholder:text-center border-y border-r rounded-r-lg w-full border-columbia py-2 pr-10 focus:outline-none"
 								placeholder="Filter Cards"/>
 
 							{:else}
 							<input type="text"
 								bind:value={panel.prompt}
 								on:change={filterCards}
-								class="rounded-l-lg placeholder:opacity-60 placeholder:text-center border-l pl-4 h-8 border-y border-r rounded-r-lg w-full border-columbia py-2 pr-10 focus:outline-none"
+								class="rounded-l-lg placeholder:opacity-50 placeholder:text-center border-l pl-4 h-8 border-y border-r rounded-r-lg w-full border-columbia py-2 pr-10 focus:outline-none"
 								placeholder="Filter Cards"/>
 
 							{/if}

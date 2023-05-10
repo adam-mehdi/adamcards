@@ -21,6 +21,9 @@ tauri = { version = "1.2.4", features = [] }
 diesel = { version = "2.0.0", features = ["sqlite", "chrono"] }
 chrono = { version = "0.4.23", features = ["serde"] }
 diesel_migrations = { version = "2.0.0", features = ["sqlite"] }
+async-openai = "0.10.3"
+tokio = { version = "1.25.0", features = ["full"] }
+futures = "0.3.26"
 dotenvy = "0.15"
 rand = "0.8.5"
 

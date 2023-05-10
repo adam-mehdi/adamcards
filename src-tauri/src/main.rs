@@ -67,12 +67,16 @@ use review::{
 mod db;
 use db::{establish_connection, run_migrations};
 
+mod chat;
+use chat::send_gpt_request;
+
 fn main() {
 
 
   tauri::Builder::default()
     // define what variables will be in the state of the backend
     .setup(|app| {
+      
       let mut conn = establish_connection(app);
       run_migrations(&mut conn).expect("Error embedding migrations");
     
@@ -138,7 +142,10 @@ fn main() {
       get_is_anki_frontend,
 
       //anki
-      get_next_intervals
+      get_next_intervals,
+
+      // chat
+      send_gpt_request,
 
       ])
     // run application (boilerplate)

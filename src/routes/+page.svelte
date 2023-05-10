@@ -201,7 +201,7 @@
 			<div class="mt-5 max-5xl flex flex-row justify-center mx-auto">
 
 				{#if showApiKeyInput}
-					<div in:fade="{{ duration: 250 }}" out:fade="{{ duration: 250 }}">
+					<div in:fade="{{ duration: 250 }}" out:fade="{{ duration: 500 }}">
 						<ApiKeyInput bind:apiKeyPresent={apiKeyPresent} bind:submittedApiKey={submittedApiKey}/>
 					</div>
 				{/if}

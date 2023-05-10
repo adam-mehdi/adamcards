@@ -42,11 +42,12 @@
 		"sse.js": "^0.6.1",
 		"svelte-hint": "^1.1.0",
 		"tiptap": "^1.32.2",
-		"vite-plugin-wasm": "^3.2.2"
+		"vite-plugin-wasm": "^3.2.2",
+		"ws": "^8.13.0"
 	},
 	"files": [
-	  "public/**/*",
-	  "src/**/*",
-	  "src/routes/api/chat/**/*"
+		"public/**/*",
+		"src/**/*",
+		"src/routes/api/chat/**/*"
 	]
 }
