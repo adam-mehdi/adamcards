@@ -1,9 +1,8 @@
-Cardway
+# AdamCards
 
-Welcome to Cardway, a spaced-reptition that cares about your life and a stepping-stone to an AI tutor for everyone.
+Here is the woefully undocumented repository for AdamCards! It is a desktop app created with Tauri.
+
 Installation
-
-Cardway is a tauri app that uses Svelte as its frontend and SvelteKit as its router. Install SvelteKit for tauri with the following.
 
 npm install --save-dev @sveltejs/adapter-static@next
 
