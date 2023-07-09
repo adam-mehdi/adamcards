@@ -29,7 +29,13 @@
 		renameTrayOpen = false;
 		moveTrayOpen = false;
 
+		importTrayOpen = false
+		exportTrayOpen = false
+		invalid_import = false
+		importPath = ""
+
 		resetDeadlineTrayOpen = false;
+
 	}
 
 	// specialty trays
@@ -46,13 +52,19 @@
 	let renameTrayOpen = false;
 	let moveTrayOpen = false;
 
+	let importTrayOpen = false;
+	let exportTrayOpen = false;
+	let newPerDayTrayOpen = false
+
 	$: actionTrayOpen = createFolderTrayOpen || createDeadlineTrayOpen || 
-		createDeckTrayOpen || renameTrayOpen || moveTrayOpen || resetDeadlineTrayOpen || createAnkiTrayOpen;
+		createDeckTrayOpen || renameTrayOpen || moveTrayOpen || resetDeadlineTrayOpen || createAnkiTrayOpen
+		|| exportTrayOpen || importTrayOpen || newPerDayTrayOpen;
 
 	let deadlineDate: string | null = getNextWeekDate();
 	let deadlineTime: string | null = "14:00";
 	let entered_dup_name = false;
 	let new_per_day = "8";
+	let includeReviewState = "include";
 
 
 	function getNextWeekDate(): string {
@@ -136,7 +148,7 @@
 		if (entered_dup_name)
 			return;
 
-		await invoke("rename_entry", { "entryId": entryData.entry_id, renameName });
+		await invoke("rename_entry", { "entryId": entryData.entry_id, "newName": renameName });
 
 		handleCancel();
 		reloadStore.update((state) => !state)
@@ -168,6 +180,12 @@
 		deadlineTime = "14:00";
 		entered_dup_name = false;
 		entered_past_deadline = false;
+
+		importTrayOpen = false
+		exportTrayOpen = false
+		newPerDayTrayOpen = false
+		invalid_import = false
+		importPath = ""
 	}
 	
 
@@ -230,6 +248,62 @@
 	}
 
 
+	async function handleExport() {
+
+		await invoke("export_entry", { 
+			"entryId": entryData.entry_id,  
+			"includeReviewState": includeReviewState === "include"
+		});
+
+		reloadStore.update((state) => !state)
+		handleCancel();
+	}
+
+	let importPath = "";
+	let invalid_import = false
+	async function handleImport() {
+
+		importPath = await invoke("select_entry")
+		
+		if (!importPath){
+			invalid_import = true
+			return
+		}
+
+		await invoke("import_entry", { 
+			"entryPath": importPath, 
+			"includeReviewState": includeReviewState === "include",
+			"folderId": entryData.entry_id
+		});
+
+		reloadStore.update((state) => !state)
+		handleCancel();
+	}
+
+	let newPerDay = 8;
+	$: newPerDayTrayOpen, getNewPerDay()
+	async function getNewPerDay() {
+		if (entryData.entry_type !== "deck") {
+			console.error("getting new per day on non-deck")
+			return
+		}
+
+		newPerDay = await invoke("get_new_per_day", { "deckId": entryData.entry_id })
+		
+	}
+
+	async function handleNewPerDay() {
+		await invoke("write_new_per_day", { "deckId": entryData.entry_id, "newPerDay": newPerDay })
+		reloadStore.update((state) => !state)
+		handleCancel();
+
+	}
+
+
+
+
+
+
 </script>
 
 
@@ -251,6 +325,12 @@
 				<div class="h-6 w-5 text-blacktext dark:text-columbia font-extrabold">!</div>
 			</Hint>
 		</div>
+	{:else if invalid_import}
+		<div class="float-right">
+			<Hint placement="top" text="Failed to get valid path">
+				<div class="h-6 w-5 text-blacktext dark:text-columbia font-extrabold">!</div>
+			</Hint>
+		</div>
 	{:else}
 		<!-- placeholder for spacing -->
 		<div class="float-right">
@@ -266,7 +346,7 @@
 			
 			{#if deadline_complete}
 				<Hint placement="top" text="Reset deadline">
-					<button class="cursor-pointer ring-columbia  focus:outline-none focus:ring duration-75" 
+					<button class="cursor-pointer ring-columbia  focus:outline-none focus:ring " 
 						on:keydown|stopPropagation={() => {
 							resetDeadlineTrayOpen = !resetDeadlineTrayOpen;
 							settingsTrayOpen = !settingsTrayOpen;
@@ -297,7 +377,7 @@
 			{#if !deadline_complete}
 				<a href={`/${entryData.entry_id}/edit`} class="z-10 outline-none">
 					<Hint placement="top" text="Edit">
-						<button class="float-right ring-columbia -mr-1  focus:outline-none focus:ring duration-75 rounded-md">
+						<button class="float-right ring-columbia -mr-1  focus:outline-none focus:ring  rounded-md">
 							<img class="w-6 h-6 p-1 dark:invert" src=pencil.png alt="editing pencil" />
 						</button>
 					</Hint>
@@ -305,7 +385,7 @@
 			{:else}
 				<div class="z-20 outline-none">
 					<Hint placement="top" text="Reset before editing">
-						<button class="float-right cursor-default -mr-1 ring-columbia rounded-md focus:outline-none focus:ring duration-75">
+						<button class="float-right cursor-default -mr-1 ring-columbia rounded-md focus:outline-none focus:ring ">
 							<img class="w-6 h-6 p-1 dark:invert opacity-30" src=pencil.png alt="editing pencil" />
 						</button>
 					</Hint>
@@ -316,7 +396,7 @@
 			{#if entryData.entry_quota != null && (entryData.entry_quota.new_left > 0 || entryData.entry_quota.review_left > 0)}
 				<a href={`/${entryData.entry_id}/review`} class="z-20 outline-none">
 					<Hint placement="top" text="Review">
-						<button class="float-right z-30 ring-columbia -ml-1 focus:outline-none focus:ring duration-75 rounded-md">
+						<button class="float-right z-30 ring-columbia -ml-1 focus:outline-none focus:ring  rounded-md">
 							<img class="w-6 h-6 p-1 dark:invert" src=flash-cards.png alt="review" />
 						</button>
 					</Hint>
@@ -325,7 +405,7 @@
 				<div class="z-20 outline-none">
 					<Hint placement="top" text="No cards to review">
 						<button
-							class="float-right cursor-default ring-columbia -ml-1 rounded-md focus:outline-none focus:ring duration-75">
+							class="float-right cursor-default ring-columbia -ml-1 rounded-md focus:outline-none focus:ring ">
 							<img class="w-6 h-6 p-1 dark:invert opacity-40" src=flash-cards.png alt="review" />
 						</button>
 					</Hint>
@@ -390,7 +470,7 @@
 	<!-- vertical ellipsis to open settings tray -->
 	<div class="z-40">
 		<Hint placement="top" text="Actions">
-			<button class="float-right ring-columbia focus:outline-none focus:ring duration-75 rounded-md -ring-offset-4" on:click|stopPropagation={toggleSettingsTray}>
+			<button class="float-right ring-columbia focus:outline-none focus:ring  rounded-md -ring-offset-4" on:click|stopPropagation={toggleSettingsTray}>
 					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-6 h-6">
 						<path fill-rule="evenodd" d="M10.5 6a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zm0 6a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0zm0 6a1.5 1.5 0 113 0 1.5 1.5 0 01-3 0z" clip-rule="evenodd" />
 					</svg>
@@ -403,13 +483,13 @@
 	{#if settingsTrayOpen}
 	<div
 		in:fade="{{ duration: 150 }}" out:fade="{{ duration: 150 }}"
-		class="absolute flex justify-between z-50 divide-y divide-gray-100 rounded-lg {!actionTrayOpen ? "w-28" : "w-64"} bg-white dark:bg-slate-700 text-blacktext dark:text-whitetext"
+		class="absolute flex justify-between z-50 divide-y divide-gray-100 rounded-lg {!actionTrayOpen ? "w-32" : "w-64"} bg-white dark:bg-slate-700 text-blacktext dark:text-whitetext"
 		use:clickOutside on:click_outside|capture={handleClickOutside}> <!-- error on `click_outside` is due to svelte; like a necessary deprecation error, ignore it -->
 
 		{#if !actionTrayOpen}
 
 		<!-- Dropdown menu -->
-		<ul class="px-1 py-2 text-sm ml-3 border-r-[1px] border-columbia -border-spacing-4 rounded-lg" aria-labelledby="dropdownRightEndButton">
+		<ul class="pr-1 pl-2 py-2 text-sm ml-1 border-r-[1px] border-columbia -border-spacing-4 rounded-lg" aria-labelledby="dropdownRightEndButton">
 			{#if entryData.entry_type === "folder" }
 				<li>
 					<div role="button" tabindex="0"
@@ -462,6 +542,38 @@
 				</li>
 			{/if}
 
+
+			{#if entryData.entry_type === "folder" }
+			<li>
+				<div role="button" tabindex="0"
+					on:click={() => { importTrayOpen = true; }} on:keypress={() => { importTrayOpen = true; }}
+					class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg border-columbia block px-4 py-2 dark:hover:text-whitetext">
+					Import
+				</div>
+			</li>
+			{/if}
+			
+			{#if entryData.entry_type === "deadline" && !deadline_complete || entryData.entry_type === "ankibox"}
+			<li>
+				<div role="button" tabindex="0"
+					on:click={() => { exportTrayOpen = true; }} on:keypress={() => { exportTrayOpen = true; }}
+					class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg  block px-4 py-2 border-columbia dark:hover:text-white">
+					Export
+				</div>
+			</li>
+			{/if}
+
+
+			 {#if entryData.entry_type === "deck"}
+				<li>
+					<div role="button" tabindex="0"
+						on:click={() => {newPerDayTrayOpen = true; }} on:keypress={ () => {newPerDayTrayOpen = true; }}
+						class="hover:bg-columbia border-x-2 dark:hover:bg-columbia-dark rounded-lg  block px-4 py-2 border-columbia dark:hover:text-white">
+						Modify New/Day
+					</div>
+				</li>
+			{/if}
+
 			{#if !$rootFolderStore.includes(entryData.entry_id)}
 				<li>
 					<div role="button" tabindex="0"
@@ -483,28 +595,42 @@
 						if (renameTrayOpen) handleRename() 
 						else if (moveTrayOpen) handleMove()
 						else if (resetDeadlineTrayOpen) handleResetDeadline()
+						else if (exportTrayOpen) handleExport()
+						else if (importTrayOpen) handleImport()
+						else if (newPerDayTrayOpen) handleNewPerDay()
 						else handleCreateEntry()
 					}}>
 				<div class="border-b border-columbia py-2 grid {createDeadlineTrayOpen ? "grid-rows-4" : "grid-rows-2" } grid-cols-3 gap-2">
 					<!-- name for Create -->
-					{#if !moveTrayOpen && !renameTrayOpen && !resetDeadlineTrayOpen}
-						<input type="text" use:focus placeholder="Enter Name" bind:value={newName} class="h-8 {createDeckTrayOpen ? "col-span-2" : "col-span-3"} hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring duration-75"/>
+					{#if createDeckTrayOpen || createFolderTrayOpen || createDeadlineTrayOpen || createAnkiTrayOpen}
+						<input type="text" use:focus placeholder="Enter Name" bind:value={newName} class="h-8 {createDeckTrayOpen ? "col-span-2" : "col-span-3"} hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring "/>
 
 						 {#if createDeckTrayOpen}
 							<Hint placement="top" text="Set New Cards Per Day">
 								<input bind:value={new_per_day} type="number" id="quantity" name="quantity" min="1" max="100" step="1"
-									class="h-8 col-span-1 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-3 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75">
+									class="h-8 col-span-1 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-3 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 ">
 							</Hint>
 						{/if}
 		
 					<!-- Rename -->
-					{:else if !moveTrayOpen && renameTrayOpen && !resetDeadlineTrayOpen} 
-						<input type="text" use:focus placeholder="Enter Name" bind:value={renameName} class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring duration-75"/>
+					{:else if renameTrayOpen} 
+						<input type="text" use:focus placeholder="Enter Name" bind:value={renameName} class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring "/>
+
+					{:else if newPerDayTrayOpen}
+						<div class="col-span-3 flex ">
+							<!-- <div class="col-span-1"> -->
+							<Hint placement="top" text="Set New Cards Per Day">
+								<input bind:value={newPerDay} type="number" id="quantity" name="quantity" min="1" max="100" step="1"
+									class="h-8 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-3 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75">
+							</Hint>
+						<!-- </div> -->
+						</div>
+						
 					<!-- Move -->
-					{:else if !resetDeadlineTrayOpen}
+					{:else if moveTrayOpen}
 						<!-- <label for="folders" class="w-32 -mb-8">Choose Location:</label> -->
 						
-						<select id="folders" bind:value={newParentId} class="h-8 col-span-3 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring duration-75">
+						<select id="folders" bind:value={newParentId} class="h-8 col-span-3 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring ">
 							{#each $folderSystemStore.data as entry}
 								{#if entry.entry_type == "folder"}
 									<option value={entry.entry_id}>{entry.entry_name}</option>
@@ -512,16 +638,17 @@
 							{/each}
 						</select>
 					{/if}
+
 					
 					{#if createDeadlineTrayOpen || resetDeadlineTrayOpen}
-						<input type="date" id="deadlineDate" bind:value={deadlineDate} required class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring duration-75"/>
-						<input type="time" bind:value={deadlineTime} required class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring duration-75"/>
+						<input type="date" id="deadlineDate" bind:value={deadlineDate} required class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring "/>
+						<input type="time" bind:value={deadlineTime} required class="h-8 col-span-3 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring "/>
 						<div class="justify-center h-8 col-span-3 hover:bg-columbia rounded-lg dark:hover:bg-columbia block dark:hover:text-whitetext">
 							
 							<select 
 								bind:value={studyIntensity}
 								placeholder="Study Intensity"
-								class="form-select block appearance-none w-full h-full text-base px-4 hover:bg-columbia dark:hover:bg-columbia-dark border-2 border-columbia font-normal rounded-lg transition ease-in-out m-0 dark:bg-offblack dark:text-offwhite focus:text-gray-700 focus:bg-white ring-columbia  focus:outline-none focus:ring duration-75" 
+								class="form-select block appearance-none w-full h-full text-base px-4 hover:bg-columbia dark:hover:bg-columbia-dark border-2 border-columbia font-normal rounded-lg transition ease-in-out m-0 dark:bg-offblack dark:text-offwhite focus:text-gray-700 focus:bg-white ring-columbia  focus:outline-none focus:ring " 
 								aria-label="Default select example">
 								<option  value="" selected disabled>Study Intensity</option>
 								
@@ -535,14 +662,56 @@
 						</div>
 					{/if}
 
+					{#if exportTrayOpen}
+
+						<div class="justify-center h-8 col-span-3 hover:bg-columbia rounded-lg dark:hover:bg-columbia block dark:hover:text-whitetext">
+								
+							<select 
+								bind:value={includeReviewState}
+								placeholder="Study Intensity"
+								class="form-select block appearance-none w-full h-full text-base px-4 hover:bg-columbia dark:hover:bg-columbia-dark border-2 border-columbia font-normal rounded-lg transition ease-in-out m-0 dark:bg-offblack dark:text-offwhite focus:text-gray-700 focus:bg-white ring-columbia  focus:outline-none focus:ring " 
+								aria-label="Default select example">
+								
+								<option  value="include" selected>Include Review Data</option>
+								<option value="exclude">Exclude Review Data</option>
+
+							</select>
+						</div>						
+					{:else if importTrayOpen}
+						<div class="justify-center h-8 col-span-3 hover:bg-columbia rounded-lg dark:hover:bg-columbia block dark:hover:text-whitetext">
+								
+							<select 
+								bind:value={includeReviewState}
+								placeholder="Study Intensity"
+								class="form-select block appearance-none w-full h-full text-base px-4 hover:bg-columbia dark:hover:bg-columbia-dark border-2 border-columbia font-normal rounded-lg transition ease-in-out m-0 dark:bg-offblack dark:text-offwhite focus:text-gray-700 focus:bg-white ring-columbia  focus:outline-none focus:ring " 
+								aria-label="Default select example">
+								
+								<option  value="include" selected>Include Review Data</option>
+								<option value="exclude">Exclude Review Data</option>
+
+							</select>
+						</div>						
+
+						<button 
+							on:click={handleImport} on:keydown={handleImport}
+							class="h-8 col-span-2 text-sm hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring ">
+							Select File
+							
+						</button>						
+
+
+					{/if}
+
 					
+					{#if !importTrayOpen}
 					<button 
-						type="submit" class="h-8 col-span-2 text-sm hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring duration-75">
-						{renameTrayOpen ? "Rename" : resetDeadlineTrayOpen ? "Reset Deadline" : moveTrayOpen ? "Choose Folder" : "Create"}
+						type="submit" class="h-8 col-span-2 text-sm hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring ">
+						{renameTrayOpen ? "Rename" : resetDeadlineTrayOpen ? "Reset Deadline" : moveTrayOpen ? "Choose Folder" : exportTrayOpen ? "Export" : "Create"}
 					</button>
+					{/if}
 					<button 
-						type="button" on:click={ handleCancel	 } 
-						class="h-8 col-span-1 hover:bg-columbia border-2 border-columbia dark:bg-offblack text-sm dark:hover:bg-columbia-dark rounded-lg block dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring duration-75">
+						type="button" on:click={ handleCancel } 
+						class="h-8 col-span-1 hover:bg-columbia border-2 border-columbia dark:bg-offblack text-sm dark:hover:bg-columbia-dark rounded-lg block dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring ">
 						Cancel
 					</button>
 				</div>

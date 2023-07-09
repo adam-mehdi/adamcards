@@ -409,11 +409,11 @@
 
 		card.loading = true;
 		// process front and back
-		let query = `I want you to act as Mnemonic Tutor. I will provide a flashcard, and it will be your job to concisely explain it in easy-to-understand terms. This could include providing novel step-by-step instructions for answering the question, demonstrating implications with visuals or suggesting mnemonics to remember it. My first card is FRONT: "${stripHtml(card.card.front)}" BACK: "${stripHtml(card.card.back)}"`
+		let query = `I want you to act as Mnemonic Tutor. I will provide a flashcard, and you will explain it like I'm five years old. This could include providing step-by-step instructions for answering the question, suggesting mnemonics to remember it. NEVER address me directly and DON'T say "kiddo". Just go into the concise explanation. My first card is FRONT: "${stripHtml(card.card.front)}" BACK: "${stripHtml(card.card.back)} MNEMONIC TUTOR EXPLANATION: "`
 
 		chatMessages = [{ role: 'user', content: query }]
 
-		const systemPrompt = "Introducing Mnemonic Tutor designed to help students understand facts through brief yet insightful explanations. This AI-powered system limits its responses to two sentences, avoiding repetition, apologies, or restating, while providing original, informative, and true-to-subject-matter answers that will help students learn more efficiently."
+		const systemPrompt = "Introducing Mnemonic Tutor designed to help students understand facts by explaining like I'm five. This AI-powered system limits its responses to three sentences and explains concepts in the simplest possible manner ONLY through intuitive examples."
 
 		const unlistenChatGPT = await appWindow.listen(
 			`CHATGPT_RESPONSE_${card.card.id}`,
@@ -486,7 +486,7 @@
 		text = text.replaceAll("•", "");
 		const num_questions = text.split("?").length - 1
 		
-		text = `I want you to act as Card Creator. Card Creator will create cards (question-answer pairs) from the provided text. It separates cards with "<br><br>" after each answer. Restrictions: (1) question and answer are separated with ">>" (2) cards are separated with "<br><br>" (3) rephrase question if convoluted or ungrammatical (4) answer is ONE sentence (5) rephrase provided answer if given (6) create ${num_questions} card(s), each corresponding to a question in the notes (7) each line should be in the format question >> answer with no other information (8) avoid complete sentence outputs (9) do not number cards. Provided text: ${text} Card Creator created cards: `
+		text = `I want you to act as Card Creator. Card Creator will create cards (question-answer pairs) from the provided text. It separates cards with "<br><br>" after each answer. Restrictions: (1) question and answer are separated with ">>" (2) cards are separated with "<br><br>" (3) rephrase question if convoluted or ungrammatical (4) answer is ONE sentence (5) rephrase provided answer if given (6) create ${num_questions} card(s), each corresponding to a question in the notes (7) each line should be in the format question >> answer with no other information (8) avoid complete sentence outputs (9) do not number cards (10) cards have format {front of card >> back of card <br><br>}. Provided text: ${text} Card Creator created cards: `
 		panel.textfield = ''
 		loadingSuggestions = true;
 
@@ -498,7 +498,7 @@
 
 		suggestionMessages = [...suggestionMessages, { role: 'user', content: text }]
 		// const systemPrompt = `Introducing the Card Creator, which can create flashcards from notes. It separates each card with "<br><br>", and it separates front and back of each card with ">>". Each card is a question-answer pair. If both the front and back of the flashcard is provided, AI Synthesizer only corrects grammar and simplifies prose. If only the front is provided, it gives a VERY concise back. Card Creator is a most powerful tool for creating flashcards from notes containing questions`
-		const systemPrompt = ``
+		const systemPrompt = `AI Synthesizer is designed to be able to create flashcards from a text of questions. It takes the same question and provides an answer if there is none. If there is an answer, it adapts the answer. It creates a flashcard only based on a question in the notes. I Synthesizer is a most powerful tool designed to create cards by understanding questions and providing good answers.`
 
 		const unlistenChatGPT = await appWindow.listen(
 			'CHATGPT_RESPONSE',
@@ -643,8 +643,8 @@
 					<input type="text" use:focus placeholder="Enter Name" bind:value={newName} class="h-8 col-span-2 hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-3 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75"/>
 					<!-- <label for="quantity">Enter a number:</label> -->
 					<Hint placement="top" text="Set New Cards Per Day">
-					<input bind:value={newPerDay} type="number" id="quantity" name="quantity" min="1" max="100" step="1"
-						class="h-8 col-span-1 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-3 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75">
+						<input bind:value={newPerDay} type="number" id="quantity" name="quantity" min="1" max="100" step="1"
+							class="h-8 col-span-1 appearance-none hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-3 dark:hover:text-whitetext ring-columbia focus:outline-none focus:ring-2 duration-75">
 					</Hint>
 
 					<button type="submit" class="h-8 col-span-3 text-sm hover:bg-columbia dark:hover:bg-columbia-dark dark:bg-offblack border-2 border-columbia rounded-lg block px-4 dark:hover:text-whitetext ring-columbia  focus:outline-none focus:ring-2 duration-75">

@@ -28,7 +28,12 @@ use crate::home::{
   reset_deadline,
   toggle_is_expanded,
   write_api_key,
-  get_api_key
+  get_api_key,
+  export_entry,
+  import_entry,
+  select_entry,
+  get_new_per_day,
+  write_new_per_day
 };
 
 mod startup;
@@ -122,8 +127,12 @@ fn main() {
       toggle_is_expanded,
       write_api_key,
       get_api_key,
-
       print_cards,
+      export_entry,
+      import_entry,
+      select_entry,
+      get_new_per_day,
+      write_new_per_day,
 
       // edit
       read_deadline_contents,

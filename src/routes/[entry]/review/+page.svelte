@@ -421,7 +421,7 @@
 		}
 
 		let query = messages.length === 1
-			? `Now AI Instructor will evaluate my guess in at most two sentences. Restrictions: (1) explain if seems correct, partially correct or incorrect, defaulting to incorrect (2) address incorrect points by explaining how things actually are (3) a guess is correct if it says the same thing as the answer (4) don't congratulate (5) avoid restating the answer. Question: ${stripHtml(currCard.card.front)} True Answer: ${stripHtml(currCard.card.back)} My guess: ${stripHtml(userAnswer)}  AI Instructor evaluation:`
+			? `Now AI Instructor will evaluate my guess in at most two sentences. Restrictions: (1) explain if seems correct, partially correct or incorrect, defaulting to incorrect (2) address incorrect points by explaining how things actually are (3) a guess is correct if it says the same thing as the answer (4) don't congratulate (5) avoid restating the answer. Question: ${stripHtml(currCard.card.front)} True Answer: ${stripHtml(currCard.card.back)} My guess: ${stripHtml(userAnswer)}  AI Instructor comparing question and answer:`
 			: `Write in small paragraphs, putting "<br><br>" between each paragraph. Respond to my prompt with elucidating examples. My prompt: "${processedAnswer}" Your explanation: `
 		
 		let systemPrompt = messages.length === 1

@@ -19,6 +19,14 @@ use crate::utils::get_num_boxes;
 use crate::utils::handle_missed_days;
 use crate::edit::{get_days_to_go, write_quotas};
 
+use tauri::api::dialog::FileDialogBuilder;
+use std::fs::File;
+use std::io::Write;
+use std::path::PathBuf;
+use std::io::BufReader;
+
+use futures::channel::oneshot;
+
 
 pub struct DatabaseState {
     pub conn: Arc<Mutex<SqliteConnection>>,
@@ -157,11 +165,11 @@ pub fn read_folder_system(state: tauri::State<DatabaseState>) -> Option<FolderSy
         .load::<(i32, i32)>(conn)
         .expect("Error loading parents");
 
+
     let mut pairs = Vec::new();
     for parent in all_parents {
         pairs.push(EntryPair {parent_id: parent.0, child_id: parent.1});
     }
-
 
     let all_entries = entries::table
         .select((entries::id, entries::name, entries::is_expanded))
@@ -291,7 +299,7 @@ pub fn get_deck_quota(conn: &mut SqliteConnection, deck_id: i32) -> Option<Quota
             .get_results::<Option<i32>>(conn)
             .expect("failed to get card repetitions");
 
-        let new_per_day = decks::table
+        let mut new_per_day = decks::table
             .find(deck_id)
             .select(decks::new_per_day)
             .get_result::<Option<i32>>(conn)
@@ -315,11 +323,20 @@ pub fn get_deck_quota(conn: &mut SqliteConnection, deck_id: i32) -> Option<Quota
             .optional()
             .unwrap();
 
+            
+    
         let mut num_progressed = 0;
         if let Some((new_prac, rev_prac)) = results {
             // num_new -= new_prac;
             // num_review -= rev_prac;
+            
             num_progressed = new_prac + rev_prac;
+
+            // for case where new_per_day is changed to be less than new_prac
+            if new_prac > new_per_day {
+                new_per_day = new_prac;
+            }
+
             num_new = std::cmp::max(
                 std::cmp::min(new_per_day - new_prac, num_new), 
                 0
@@ -634,11 +651,6 @@ pub fn rename_entry(state: tauri::State<DatabaseState>, entry_id: i32, new_name:
 }
 
 
-// pub fn get_deck_quotas(data_dir: State<AppDataDirState>, deck_paths: Vec<String>
-//     ) -> Vec<EntryQuota> {
-
-// }
-
 #[tauri::command]
 pub fn is_duplicate_name(state: tauri::State<DatabaseState>, parent_id: Option<i32>, new_name: String) -> bool {
     use crate::schema::{parents, entries};
@@ -808,4 +820,301 @@ pub fn toggle_is_expanded(state: tauri::State<DatabaseState>, entry_id: i32, is_
         .execute(conn)
         .expect("failed to update expanded");
     
+}
+
+#[derive(Serialize, Deserialize)]
+struct SubjectContents {
+    name: String,
+    decks: Vec<DeckContents>,
+
+}
+
+#[derive(Serialize, Deserialize)]
+struct DeckContents {
+    name: String,
+    new_per_day: i32,
+    cards: Vec<CardContents>
+}
+
+#[derive(Serialize, Deserialize, Queryable, )]
+struct CardContents {
+    front: String,
+    back: String,
+    explanation: Option<String>,
+    queue_score: Option<i32>,
+    repetitions: Option<i32>,
+    easiness: Option<f32>,
+    interval: Option<i32>,
+    next_practice: Option<NaiveDate>,
+}
+
+
+#[tauri::command]
+pub fn export_entry(state: tauri::State<DatabaseState>, entry_id: i32, include_review_state: bool) {
+    use crate::schema::entries;
+
+    let conn = &mut *state.conn.lock().unwrap();
+    let my_object = entry_to_json(conn, entry_id, include_review_state);
+
+    // serialize the object to JSON
+    let json = serde_json::to_string_pretty(&my_object).expect("Failed to serialize");
+
+    let subject_name = entries::table
+        .filter(entries::id.eq(entry_id))
+        .select(entries::name)
+        .get_result::<String>(conn)
+        .expect("failed to find subject id");
+    let subject_name = format!(
+        "adam_{}.json", 
+        subject_name.to_lowercase().replace(" ", "_")
+    );
+
+    // Create a file dialog builder
+    let file_dialog = FileDialogBuilder::new()
+        .add_filter("JSON files", &["json"])
+        // .set_directory(desktop_dir().unwrap())
+        .set_file_name(&subject_name);
+
+    // open a file dialog
+    let json_clone = json.clone();  // clone the json value
+    file_dialog.save_file(move |file_path| {
+        if let Some(path) = file_path {
+            // create a file at the chosen path
+            let mut file = File::create(&path).expect("Failed to create file");
+
+            // write the JSON data to the file
+            file.write_all(json_clone.as_bytes()).expect("Failed to write data");  // use the cloned json value
+        }
+    });
+}
+
+
+
+fn entry_to_json(conn: &mut SqliteConnection, entry_id: i32, include_review_state: bool) -> SubjectContents {
+    use crate::schema::{entries, parents};
+
+    let subject_name = entries::table
+        .filter(entries::id.eq(entry_id))
+        .select(entries::name)
+        .get_result::<String>(conn)
+        .expect("failed to find subject id");
+
+    let child_deck_ids = parents::table
+        .filter(parents::parent_id.eq(entry_id))
+        .select(parents::child_id)
+        .get_results::<i32>(conn)
+        .expect("failed to get child decks");
+
+    let mut subject = SubjectContents {
+        name: subject_name,
+        decks: Vec::new()
+    };
+
+    for deck_id in child_deck_ids {
+        subject.decks.push(
+            load_deck_contents(conn, deck_id, include_review_state)
+        );
+    }
+
+    subject
+}
+
+
+fn load_deck_contents(conn: &mut SqliteConnection, deck_id: i32, include_review_state: bool) -> DeckContents {
+    use crate::schema::{cards, entries, decks};
+
+    let deck_name = entries::table
+        .filter(entries::id.eq(deck_id))
+        .select(entries::name)
+        .get_result::<String>(conn)
+        .expect("failed to get deck name");
+
+    let new_per_day = decks::table 
+        .filter(decks::id.eq(deck_id))
+        .select(decks::new_per_day)
+        .get_result::<Option<i32>>(conn)
+        .expect("failed to get new_per_day");
+
+
+    let mut cards: Vec<CardContents> = cards::table
+        .filter(cards::deck_id.eq(deck_id))
+        .select((
+            cards::front,
+            cards::back,
+            cards::explanation,
+            cards::queue_score,
+            cards::repetitions,
+            cards::easiness,
+            cards::interval,
+            cards::next_practice,
+        ))
+        .get_results(conn)
+        .expect("Error loading cards");
+
+    if include_review_state {
+        for card in &mut cards {
+            card.queue_score = None;
+            card.repetitions = Some(0);
+            card.easiness = Some(2.5);
+            card.interval = Some(0);
+            card.next_practice = Some(chrono::Local::now().date_naive());
+        }
+    }
+    
+
+    let deck_contents = DeckContents {
+        name: deck_name,
+        new_per_day: new_per_day.unwrap(),
+        cards
+    };
+
+    deck_contents
+}
+
+
+#[tauri::command]
+pub async fn select_entry() -> Option<PathBuf> {
+    let (tx, rx) = oneshot::channel::<Option<PathBuf>>();
+    
+    // Create a file dialog builder
+    let file_dialog = FileDialogBuilder::new()
+        .add_filter("JSON files", &["json"]);
+
+    // open a file dialog
+    file_dialog.pick_file(move |file_path| {
+        if let Some(path) = file_path.clone() {
+            // Try to open the file to check if it's readable
+            if File::open(&path).is_ok() {
+                // Send the path using the oneshot channel
+                tx.send(Some(path)).expect("Failed to send path");
+            } else {
+                tx.send(None).expect("Failed to send path");
+            }
+        } else {
+            tx.send(None).expect("Failed to send path");
+        }
+    });
+
+    // Await the file path. This will not block the main thread.
+    let file_path = rx.await.unwrap();
+    
+    // Return the selected file path
+    file_path
+}
+
+
+#[tauri::command]
+pub fn import_entry(state: tauri::State<DatabaseState>, entry_path: String, include_review_state: bool, folder_id: i32) {
+    let conn = &mut *state.conn.lock().unwrap();
+
+    let entry_path = PathBuf::from(entry_path);
+
+    // Open the file in read-only mode with buffer.
+    let file = match File::open(&entry_path) {
+        Ok(file) => file,
+        Err(e) => {
+            eprintln!("Failed to open file: {}", e);
+            return;
+        }
+    };
+    let reader = BufReader::new(file);
+
+    // Read the JSON contents of the file as an instance of `SubjectContents`.
+    let subject_contents: Result<SubjectContents, _> = serde_json::from_reader(reader);
+    match subject_contents {
+        Ok(data) => {
+            // Handle your data here
+            write_subject_contents(conn, data, folder_id, include_review_state)
+        },
+        Err(e) => {
+            eprintln!("Failed to deserialize JSON: {}", e);
+        }
+    }
+}
+
+
+fn write_subject_contents(conn: &mut SqliteConnection, contents: SubjectContents, parent_id: i32, include_review_state: bool) {
+
+    let entry_type = "ankibox";
+
+    let subject_id = insert_entry(conn, Some(parent_id), &contents.name, entry_type);
+    insert_deadline(conn, subject_id, None, None, true);
+
+    for deck in contents.decks {
+        let deck_id = insert_entry(conn, Some(subject_id), &deck.name, "deck");
+        insert_deck(conn, deck_id, subject_id, Some(deck.new_per_day));
+
+        insert_imported_cards(conn, deck, include_review_state, deck_id)
+        
+    }
+
+}
+
+fn insert_imported_cards(conn: &mut SqliteConnection, contents: DeckContents, include_review_state: bool, deck_id: i32) {
+    use crate::schema::cards;
+
+    if include_review_state {
+        for card in contents.cards {
+            insert_into(cards::table)
+                .values((
+                    cards::deck_id.eq(deck_id), 
+                    cards::front.eq(card.front), 
+                    cards::back.eq(card.back), 
+                    cards::explanation.eq(card.explanation),
+                    cards::next_practice.eq(card.next_practice),
+                    cards::repetitions.eq(card.repetitions), 
+                    cards::interval.eq(card.interval), 
+                    cards::easiness.eq(card.easiness)
+                ))
+                .execute(conn)
+                .expect("failed to insert new cards");
+        }
+
+    } else {
+        let today = chrono::Local::now().date_naive();
+        for card in contents.cards {
+            insert_into(cards::table)
+                .values((
+                    cards::deck_id.eq(deck_id), 
+                    cards::front.eq(card.front), 
+                    cards::back.eq(card.back), 
+                    cards::explanation.eq(card.explanation),
+                    cards::next_practice.eq(today),
+                    cards::repetitions.eq(0), 
+                    cards::interval.eq(0), 
+                    cards::easiness.eq(2.5)
+                ))
+                .execute(conn)
+                .expect("failed to insert new cards");
+            
+        }
+    }
+
+}
+
+#[tauri::command]
+pub fn get_new_per_day(state: tauri::State<DatabaseState>, deck_id: i32) -> i32{
+    use crate::schema::decks;
+    let conn = &mut *state.conn.lock().unwrap();
+
+
+    decks::table   
+        .filter(decks::id.eq(deck_id))
+        .select(decks::new_per_day)
+        .get_result::<Option<i32>>(conn)
+        .expect("failed to get deck")
+        .expect("failed to unwrap new_per_day")
+
+}
+
+#[tauri::command]
+pub fn write_new_per_day(state: tauri::State<DatabaseState>, deck_id: i32, new_per_day: i32) {
+    use crate::schema::decks;
+    let conn = &mut *state.conn.lock().unwrap();
+
+    update(decks::table)
+        .filter(decks::id.eq(deck_id))
+        .set(decks::new_per_day.eq(Some(new_per_day)))
+        .execute(conn)
+        .expect("failed to get new_id");
 }
