@@ -1,7 +1,6 @@
-## Cardway
+## AdamCards
 
-Welcome to Cardway, a spaced-reptition that cares about your life and a stepping-stone to an AI tutor for everyone.
-
+Welcome to AdamCards, a spaced-reptition that cares about your life.
 
 ## Installation
 
