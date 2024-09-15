@@ -2,6 +2,8 @@
 
 Welcome to AdamCards, a spaced-reptition that cares about your life.
 
+Contact me for the desktop app distribution.
+
 ## Installation
 
 Cardway is a tauri app that uses Svelte as its frontend and SvelteKit as its router. Install SvelteKit for tauri with the following.
